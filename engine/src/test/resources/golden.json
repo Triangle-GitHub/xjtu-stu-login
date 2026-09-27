@@ -1,0 +1,76 @@
+{
+  "vectors": [
+    {
+      "str": "sample-pass-0000",
+      "key": "12345678",
+      "xen": "WPCqixiIQoxlS9bf"
+    },
+    {
+      "str": "2300000000",
+      "key": "abcdefgh",
+      "xen": "Zo3jO6MG5TgimcBrQRIqIv=="
+    },
+    {
+      "str": "",
+      "key": "12345678",
+      "xen": ""
+    },
+    {
+      "str": "",
+      "key": "",
+      "xen": ""
+    },
+    {
+      "str": "sample-pass-0000",
+      "key": "ab",
+      "xen": "//VehWf2Eigbtlfi"
+    },
+    {
+      "str": "p@ss/w+rd=1234\u0026%",
+      "key": "5b4f1a8e2c09d3f7",
+      "xen": "aW1xfkm7/aqqHemNAzF/Qm+tgcS="
+    },
+    {
+      "str": "西安交通大学校园网登录测试",
+      "key": "token123",
+      "xen": "/DtypCo3YyRuh1dlABeGnC+zUai8ZrD2+ieajf5brkUql5YrZFxGLpJlcYD="
+    },
+    {
+      "str": "Windows 2000",
+      "key": "losedows",
+      "xen": "QQEauAhfshWcMTfmi5Ea9v=="
+    },
+    {
+      "str": "losedows",
+      "key": "Windows 2000",
+      "xen": "NMxCALwjlcn0GSzd"
+    },
+    {
+      "str": "{\"acid\":\"1\",\"enc_ver\":\"srun_bx1\",\"ip\":\"10.18.17.26\",\"password\":\"sample-pass-0000\",\"username\":\"2300000000\"}",
+      "key": "5b4f1a8e2c09d3f7",
+      "xen": "BxXeFlAtWNYavjn+QOHXPFFsPPZ4SgJtOijtoIwuk1H3L/viVBu7w8bzVjmM2mqLufg1eb54NbJZDar55BGNaqLijpJi8KB53K4uLj9uQr7QOWbuTXRmmfLMWFnnivBQcgQuBv=="
+    },
+    {
+      "str": "This is a very long plaintext string used to exercise the XTEA variant block cipher with more than one block. 0123456789012345678901234567890123456789",
+      "key": "key123",
+      "xen": "JKdRni4Gr4tYpwsklk9U2H+xizk4wiPmBPS/HQAHEWXVK/3Q0ro+Oojt4gnIQjHreM9afwieLNkkMtpJM+SrEIvYKoGJ/RXl79P9LD0SCYaoV5Tj5u8pR1of3wCAP5oi529fXq3prxGyZklJ9ahaBnDsp7Lx21pEXI2Z/tINHWEWbLT0r4SMecOlHU8yshsn+PEb7yhIU7ZbWrVA"
+    },
+    {
+      "str": "n=200\u0026type=1\u0026acid=1\u0026os=Windows 2000\u0026name=losedows",
+      "key": "tok",
+      "xen": "Nh8WW7U30FyTdUVXIL00sMF00N353dcSw86OkBPQeNb3msJRAFmEDSDXpNjuvqIDw0TxutzA46Z="
+    }
+  ],
+  "checksum": {
+    "token": "5b4f1a8e2c09d3f7",
+    "username": "2300000000",
+    "password": "sample-pass-0000",
+    "acid": "1",
+    "ip": "10.18.17.26",
+    "n": "200",
+    "type": "1",
+    "info": "{SRBX1}BxXeFlAtWNYavjn+QOHXPFFsPPZ4SgJtOijtoIwuk1H3L/viVBu7w8bzVjmM2mqLufg1eb54NbJZDar55BGNaqLijpJi8KB53K4uLj9uQr7QOWbuTXRmmfLMWFnnivBQcgQuBv==",
+    "hmac": "c837c29aa5a92b8f537e39b1a974e04b",
+    "chksum": "1f4d4bf28688726ac5c70e8586d121e41d9d0e51\n"
+  }
+}

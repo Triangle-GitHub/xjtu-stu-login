@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">校园网保活</string>
+    <string name="status_title">登录状态</string>
+    <string name="btn_start">启动保活</string>
+    <string name="btn_stop">停止保活</string>
+    <string name="btn_settings">设置</string>
+    <string name="btn_refresh">立即检测</string>
+    <string name="settings_title">设置</string>
+    <string name="gws_title">网关列表（逐个勾选启用）</string>
+    <string name="accounts_title">账号列表（逐个勾选启用）</string>
+    <string name="add_gw">添加网关</string>
+    <string name="add_account">添加账号</string>
+    <string name="gw_domain_hint">网关地址，如 10.6.18.2</string>
+    <string name="gw_acid_hint">acid</string>
+    <string name="account_user_hint">学号</string>
+    <string name="account_pass_hint">密码</string>
+    <string name="user_type_hint">运营商后缀（留空）</string>
+    <string name="params_title">参数</string>
+    <string name="poll_interval">轮询间隔（秒）</string>
+    <string name="timeout">请求超时（毫秒）</string>
+    <string name="target_ssids">校园网 SSID（逗号分隔，留空=任意）</string>
+    <string name="room_ssids">宿舍 SSID（逗号分隔，检测到则跳过）</string>
+    <string name="auto_start">开机自动启动</string>
+    <string name="meta_os">os 参数</string>
+    <string name="meta_name">name 参数</string>
+    <string name="save">保存</string>
+</resources>

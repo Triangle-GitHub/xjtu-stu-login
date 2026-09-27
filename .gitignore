@@ -1,0 +1,17 @@
+# 明文凭据配置文件 —— 禁止提交
+ref-phone/18
+ref-phone/21
+
+# 构建产物
+.gradle/
+build/
+*/build/
+local.properties
+
+# APK 产物
+*.apk
+
+# IDE
+.idea/
+*.iml
+.kotlin/

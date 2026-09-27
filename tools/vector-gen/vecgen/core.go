@@ -1,0 +1,169 @@
+package vecgen
+
+import "math"
+
+func ordat(msg string, idx int) uint32 {
+	if len(msg) > idx {
+		return uint32([]byte(msg)[idx])
+	}
+	return 0
+}
+
+func sensCode(content string, key bool) []uint32 {
+	l := len(content)
+	pwd := make([]uint32, 0)
+	for i := 0; i < l; i += 4 {
+		pwd = append(
+			pwd,
+			ordat(content, i)|ordat(content, i+1)<<8|ordat(content, i+2)<<16|ordat(content, i+3)<<24,
+		)
+	}
+	if key {
+		pwd = append(pwd, uint32(l))
+	}
+	return pwd
+}
+
+func lenCode(msg []uint32, key bool) []byte {
+	l := uint32(len(msg))
+	ll := (l - 1) << 2
+	if key {
+		m := msg[l-1]
+		if m < ll-3 || m > ll {
+			return nil
+		}
+		ll = m
+	}
+	var t []byte
+	for i := range msg {
+		t = append(t, byte(msg[i]&0xff), byte(msg[i]>>8&0xff), byte(msg[i]>>16&0xff), byte(msg[i]>>24&0xff))
+	}
+	if key {
+		return t[0:ll]
+	}
+	return t
+}
+
+// XEncode 深澜 XTEA 变体：content,key -> 原始字节
+func XEncode(content string, key string) []byte {
+	if content == "" {
+		return nil
+	}
+	pwd := sensCode(content, true)
+	pwdk := sensCode(key, false)
+	// 注：上游 BitSrunLoginGo 的循环 `for i := 0; i < (4-len(pwdk)); i++` 因条件每次迭代重算，
+	// 只能把 pwdk 补到 3 个而非 4 个（off-by-one 潜伏 bug，仅在 key<16 字节且 idx=3 时越界）；
+	// 实际 XJTU token>=16 字节，根本不进此分支。此处按意图补满 4（与 Python 原版一致）。
+	if len(pwdk) < 4 {
+		for len(pwdk) < 4 {
+			pwdk = append(pwdk, 0)
+		}
+	}
+	var n = uint32(len(pwd) - 1)
+	z := pwd[n]
+	y := pwd[0]
+	var c uint32 = 0x86014019 | 0x183639A0
+	var m uint32 = 0
+	var e uint32 = 0
+	var p uint32 = 0
+	q := math.Floor(6 + 52/(float64(n)+1))
+	var d uint32 = 0
+	for 0 < q {
+		d = d + c&(0x8CE0D9BF|0x731F2640)
+		e = d >> 2 & 3
+		p = 0
+		for p < n {
+			y = pwd[p+1]
+			m = z>>5 ^ y<<2
+			m = m + ((y>>3 ^ z<<4) ^ (d ^ y))
+			m = m + (pwdk[(p&3)^e] ^ z)
+			pwd[p] = pwd[p] + m&(0xEFB8D130|0x10472ECF)
+			z = pwd[p]
+			p = p + 1
+		}
+		y = pwd[0]
+		m = z>>5 ^ y<<2
+		m = m + ((y>>3 ^ z<<4) ^ (d ^ y))
+		m = m + (pwdk[(p&3)^e] ^ z)
+		pwd[n] = pwd[n] + m&(0xBB390742|0x44C6F8BD)
+		z = pwd[n]
+		q = q - 1
+	}
+	return lenCode(pwd, false)
+}
+
+// XDecode 用于往返自检
+func XDecode(encodedContent []byte, key string) string {
+	if len(encodedContent) == 0 {
+		return ""
+	}
+	pwd := sensCode(string(encodedContent), false)
+	pwdk := sensCode(key, false)
+	// 注：上游 BitSrunLoginGo 的循环 `for i := 0; i < (4-len(pwdk)); i++` 因条件每次迭代重算，
+	// 只能把 pwdk 补到 3 个而非 4 个（off-by-one 潜伏 bug，仅在 key<16 字节且 idx=3 时越界）；
+	// 实际 XJTU token>=16 字节，根本不进此分支。此处按意图补满 4（与 Python 原版一致）。
+	if len(pwdk) < 4 {
+		for len(pwdk) < 4 {
+			pwdk = append(pwdk, 0)
+		}
+	}
+	var n = uint32(len(pwd) - 1)
+	var z = pwd[n]
+	var y = pwd[0]
+	var c uint32 = 0x86014019 | 0x183639A0
+	var m uint32 = 0
+	var e uint32 = 0
+	var p uint32 = 0
+	q := math.Floor(6 + 52/(float64(n)+1))
+	var d uint32 = 0
+	for q > 0 {
+		d = d + c&(0x8CE0D9BF|0x731F2640)
+		e = d >> 2 & 3
+		p = n
+		for p > 0 {
+			z = pwd[p-1]
+			m = z>>5 ^ y<<2
+			m = m + ((y>>3 ^ z<<4) ^ (d ^ y))
+			m = m + (pwdk[(p&3)^e] ^ z)
+			pwd[p] = pwd[p] - m&(0xEFB8D130|0x10472ECF)
+			y = pwd[p]
+			p = p - 1
+		}
+		z = pwd[n]
+		m = z>>5 ^ y<<2
+		m = m + ((y>>3 ^ z<<4) ^ (d ^ y))
+		m = m + (pwdk[(p&3)^e] ^ z)
+		pwd[0] = pwd[0] - m&(0xBB390742|0x44C6F8BD)
+		y = pwd[0]
+		q = q - 1
+	}
+	return string(lenCode(pwd, true))
+}
+
+// 深澜变体 base64（自定义字母表）
+func SrunB64(s []byte) string {
+	const ALPHA = "LVoJPiCN2R8G90yg+hmFHuacZ1OWMnrsSTXkYpUq/3dlbfKwv6xztjI7DeBE45QA"
+	const PADCHAR = "="
+	b10 := 0
+	var x []byte
+	imax := len(s) - len(s)%3
+	if len(s) == 0 {
+		return ""
+	}
+	for i := 0; i < imax; i += 3 {
+		b10 = (int(s[i]) << 16) | (int(s[i+1]) << 8) | (int(s[i+2]))
+		x = append(x, ALPHA[(b10>>18)])
+		x = append(x, ALPHA[((b10>>12)&63)])
+		x = append(x, ALPHA[((b10>>6)&63)])
+		x = append(x, ALPHA[(b10&63)])
+	}
+	i := imax
+	if len(s)-imax == 1 {
+		b10 = int(s[i]) << 16
+		x = append(x, ALPHA[(b10>>18)], ALPHA[((b10>>12)&63)], PADCHAR[0], PADCHAR[0])
+	} else if len(s)-imax == 2 {
+		b10 = (int(s[i]) << 16) | (int(s[i+1]) << 8)
+		x = append(x, ALPHA[(b10>>18)], ALPHA[((b10>>12)&63)], ALPHA[((b10>>6)&63)], PADCHAR[0])
+	}
+	return string(x)
+}

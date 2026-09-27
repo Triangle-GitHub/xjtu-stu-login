@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="4dp">
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/gw_enabled"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <EditText
+        android:id="@+id/gw_domain"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:hint="@string/gw_domain_hint"
+        android:inputType="textUri" />
+
+    <EditText
+        android:id="@+id/gw_acid"
+        android:layout_width="56dp"
+        android:layout_height="wrap_content"
+        android:hint="@string/gw_acid_hint"
+        android:inputType="number"
+        android:text="1" />
+
+    <ImageButton
+        android:id="@+id/btn_del_gw"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:contentDescription="删除"
+        android:src="@android:drawable/ic_menu_delete"
+        android:background="?attr/selectableItemBackgroundBorderless" />
+</LinearLayout>
