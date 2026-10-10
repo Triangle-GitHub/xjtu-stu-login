@@ -6,8 +6,10 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"vecgen/vecgen"
 )
@@ -50,6 +52,8 @@ type Golden struct {
 }
 
 func main() {
+	outPath := flag.String("out", "engine/src/test/resources/golden.json", "golden.json 输出路径（相对当前工作目录；在仓库根执行即默认写回 engine 测试资源）")
+	flag.Parse()
 	raw := [][2]string{
 		{"sample-pass-0000", "12345678"},
 		{"2300000000", "abcdefgh"},
@@ -90,8 +94,10 @@ func main() {
 		},
 	}
 	data, _ := json.MarshalIndent(g, "", "  ")
-	path := "~/xjtu-stu-login/engine/src/test/resources/golden.json"
-	os.MkdirAll("~/xjtu-stu-login/engine/src/test/resources", 0755)
+	path := *outPath
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		panic(err)
+	}
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		panic(err)
 	}

@@ -138,7 +138,7 @@ BitSrunLoginGo 功能全景中，App 只移植 `pkg/srun` 子集：
 
 | 里程碑 | 内容 | 完成标准 |
 |--------|------|----------|
-| **M0 引擎** ✅（2026-09-27 完成） | `XEncode.kt` + `XBase64.kt` + `SrunClient.kt` + JVM 单测 | golden 12 条向量全过 + mock 网关 login/logout/check 通过（`gradle :engine:test` 绿，9 项测试） |
+| **M0 引擎** ✅（2026-09-27 完成） | `XEncode.kt` + `XBase64.kt` + `SrunClient.kt` + JVM 单测 | golden 12 条向量全过 + mock 网关 login/logout/check 通过（`./gradlew :engine:test` 绿，8 项测试） |
 | **M1 App 壳** ✅（2026-09-27 完成） | UI（设置+状态）+ 前台服务 + WiFi 原生 + 存储 + 开机自启 | 本机 `assembleDebug` 出 APK（6.6 MB）；已 via adb 装入真机（HUAWEI ALN-AL00 / Android 12），未启动 |
 | **M2 真机** ⏳ 待用户 | 用户打开 App → 填账号 → 手动登录验证 → 打开自动保活 | 用户实测通过（login_ok / 断网自愈）；测试指引见 README「真机联调」 |
 
@@ -148,10 +148,9 @@ M0 与 M1 可并行推进（引擎纯 JVM，不依赖壳）。
 
 ## 7. 构建环境（build-host 可用性实测）
 
-- Java `25.0.4.1` ✅
-- Android SDK `/opt/android-sdk`：build-tools 34.0.0 / 36.0.0 / 37.0.0 + platforms android-34 / android-37.0 ✅（licenses 已接受）
-- Gradle：用 wrapper（首次下载 Gradle 发行版，走本机代理 `curl -x http://127.0.0.1:7893` 引路或直接配 `distributionUrl`）
-- AGP/Kotlin 插件：Gradle 构建时解析下载（本机有出海代理可兜底）
+- Java：构建必须显式 `export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`。系统默认 `java` 已是 25.0.4.1 —— Gradle 9.x/AGP 8.7.3 **不支持**，直接拿它跑必失败；17/21/25 均在 `/usr/lib/jvm/` 下。
+- Gradle：仓库内 wrapper 已入库（钉 `9.6.1`）。`GRADLE_USER_HOME` = `~/.gradle` → `本地 Gradle 缓存`（符号链接），其 `wrapper/dists` 已解包 9.6.1 与 8.9 ⇒ **首次运行也无需下载**；8.9 留作 AGP 8.7.3 的兼容退路（换 `distributionUrl` 即可）。全局 gradle 已不可用：原 `全局 Gradle` 于 2026-10-11 被系统清理。
+- AGP/Kotlin 插件：Gradle 构建时解析（`~/.gradle/init.d/mirrors.gradle` 会自动前置 aliyun 镜像；本机代理 `http://127.0.0.1:7893` 仍在监听，可兜底）。
 - 目标 SDK：`compileSdk 34` + `minSdk 26`（Android 8.0，覆盖前台服务通知要求；WiFi API 按实际机型用 `WifiNetworkSpecifier` 适配分支）
 
 ---
@@ -171,11 +170,11 @@ M0 与 M1 可并行推进（引擎纯 JVM，不依赖壳）。
 ### 9.1 引擎（M0）
 
 - Kotlin 核心：`engine/src/main/kotlin/org/xjtulogin/core/`（XEncode/SrunB64/SrunCrypto/SrunClient/MiniJson/LoginForm）——纯 JVM，零 Android 依赖。
-- **9 项 JVM 单测全绿**：
-  1. goldenVectorsMatch：XEncode 12 条向量（含中文/空串/特殊字符/长文本/短 key）与 Go 蓝本生成的 `golden.json` 逐字节对齐；
+- **8 项 JVM 单测全绿**（`XEncodeGoldenTest` 3 + `SrunClientMockTest` 5；2026-10-11 更正：旧文「9 项」为笔误）：
+  1. goldenVectorsMatch / emptyStringEdge：XEncode 12 条向量（含中文/空串/特殊字符/长文本/短 key）与 Go 蓝本生成的 `golden.json` 逐字节对齐，并单测空串入口→空串出口；
   2. checksumGoldenCase：`{MD5}+hmac-md5`、`{SRBX1}+XEncode(info)`、`sha1(%x\n)` 全链路与 golden 一致；
   3. mock 网关（com.sun.net.httpserver）5 场景：登录成功 / 提交参数形态（password={MD5}、info={SRBX1}、chksum 尾换行且重算一致）/ rad_user_info 在线判定 / 登出 / 错误透传（Rejected）。
-- golden 生成器：`tools/vector-gen/`（Go，vendored 自 BitSrunLoginGo 的 XEncode/XBase64 + 修正 pad），产物 `engine/src/test/resources/golden.json`（虚构测试串，无真实凭据）。
+- golden 生成器：`tools/vector-gen/`（Go，vendored 自 BitSrunLoginGo 的 XEncode/XBase64 + 修正 pad），产物 `engine/src/test/resources/golden.json`（虚构测试串，无真实凭据）。重跑：`cd tools/vector-gen && PATH=/usr/local/go/bin:$PATH go run . -out ../../engine/src/test/resources/golden.json`（Go 1.24.5 装在 `/usr/local/go/bin`，**不在默认 PATH**；`-out` 省略时写当前目录下的 `engine/src/test/resources/golden.json`）。
 
 ### 9.2 上游发现（已回报 issue #64）
 
@@ -189,8 +188,9 @@ M0 与 M1 可并行推进（引擎纯 JVM，不依赖壳）。
 - 前台服务 `LoginService`（specialUse FGS + 常驻通知文案即状态）；宿舍网优先语义继承 keep_srun v2.6；`rad_user_info` 判在线（§4.3）。
 - 凭据 EncryptedSharedPreferences（Keystore；异常回退普通 prefs —— 首版取舍）。
 - **已知边界（与设计差异）**：WiFi 自动连接未做（仅“当前 SSID 命中目标列表才保活”），避免系统弹框；如需自动切网，下一版用 WifiNetworkSpecifier + 引导。
-- 构建环境（build-host 实测）：JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64、ANDROID_HOME=/opt/android-sdk、Gradle 8.13（全局 Gradle）、AGP 8.7.3 + Kotlin 2.0.21、compileSdk 34 / minSdk 26。
-- 产物：`xjtu-stu-login-v0.1.0.apk`（6.6 MB，debug 签名）——已 ssh phone → Termux adb 静默安装至真机（HUAWEI ALN-AL00 / Android 12），**未启动**。
+- 构建环境（build-host 实测）：JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64、ANDROID_HOME=/opt/android-sdk、Gradle 9.6.1（仓库内 wrapper，已验证 `:engine:test` + `:app:assembleDebug`；AGP 8.7.3 + Kotlin 2.0.21 在 9.x 下可用，仅报 Gradle 10 弃用警告；必要时可退回 wrapper 8.9）、compileSdk 34 / minSdk 26。
+- 仓库位置（2026-10-11 迁移）：`.`（原 `~/xjtu-stu-login`，源目录已删）；原全局 `全局 Gradle` 同时被系统清理 ⇒ 构建一律走仓库内 `./gradlew`。
+- 产物：`xjtu-stu-login-v0.1.0.apk`（6580814 B ≈ 6.6 MB，debug 签名）——已 ssh phone → Termux adb 静默安装至真机（HUAWEI ALN-AL00 / Android 12），**未启动**。（2026-10-11 复核：`ssh phone` = 192.168.5.x:8022 不通——手机不在同网段 ⇒ 本次未能复核装机状态）
 
 ### 9.4 待办（M2 之后）
 
