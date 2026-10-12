@@ -251,7 +251,8 @@ class LoginService : Service() {
             } else null
 
         // 1) 宿舍网：跳过（不占用校园网账号）
-        if (cfg.roomSsids.isNotEmpty() && net.ssid != null && net.ssid in cfg.roomSsids) {
+        val netSsidKey = net.ssid?.let { ssidKey(it) }
+        if (netSsidKey != null && netSsidKey in cfg.roomSsids.map { ssidKey(it) }) {
             val text = "宿舍网 ${net.ssid}，跳过登录"
             publish("宿舍网，已跳过", text, "SSID=${net.ssid} IP=${net.ipv4 ?: "-"}\n已跳过本轮", StatusLevel.IDLE)
             return pollMs
@@ -267,7 +268,7 @@ class LoginService : Service() {
             publish("未连接 WiFi", text, text, StatusLevel.WARN)
             return pollMs
         }
-        if (cfg.targetSsids.isNotEmpty() && net.ssid != null && net.ssid !in cfg.targetSsids) {
+        if (cfg.targetSsids.isNotEmpty() && netSsidKey != null && netSsidKey !in cfg.targetSsids.map { ssidKey(it) }) {
             val text = "当前 WiFi「${net.ssid}」不在目标列表 ${cfg.targetSsids}"
             publish("不在校园网", text, text, StatusLevel.WARN)
             return pollMs
@@ -305,7 +306,8 @@ class LoginService : Service() {
             for (gw in gateways) {
                 if (!running) break
                 attempts++
-                val label = if (acc.userType.isNotBlank()) "${acc.username}@${acc.userType}" else acc.username
+                val full = if (acc.userType.isNotBlank()) "${acc.username}@${acc.userType}" else acc.username
+                val label = maskUser(full)
                 sb.append("→ $label @ ${gw.domain} ")
 
                 // VPN 下三级策略：绑 socket → 进程绑 WiFi → 默认路由（每级都被拒才降级）
@@ -476,6 +478,17 @@ class LoginService : Service() {
             m.contains("EPERM", ignoreCase = true)
     }
 
+    /** 学号脱敏：日志/通知里不出现完整学号（同学常把日志贴群里求助） */
+    private fun maskUser(name: String): String {
+        val base = name.substringBefore('@')
+        val suffix = name.substringAfter('@', "")
+        val masked = if (base.length <= 4) "****" else base.take(4) + "****" + base.takeLast(2)
+        return if (suffix.isEmpty()) masked else "$masked@$suffix"
+    }
+
+    /** SSID 宽松比较：忽略大小写，- 与空格视作 _（xjtu-stu / XJTU_STU 都能命中） */
+    private fun ssidKey(s: String): String = s.trim().uppercase().replace('-', '_').replace(' ', '_')
+
     /** 网关错误码补一句人话（login_error 基本都是后缀/密码问题） */
     private fun loginErrorHint(error: String): String = when {
         error.contains("login_error", ignoreCase = true) ->
@@ -518,7 +531,7 @@ class LoginService : Service() {
 
     private fun startForegroundCompat(content: String) {
         val n = baseBuilder()
-            .setContentTitle(getString(R.string.app_name))
+            .setContentTitle(getString(R.string.app_title))
             .setContentText(content)
             .setOngoing(true)
             .build()
@@ -532,7 +545,7 @@ class LoginService : Service() {
     private fun notifyStatus() {
         val s = StatusStore.get(this)
         val n = baseBuilder()
-            .setContentTitle("${getString(R.string.app_name)}：${s.summary}")
+            .setContentTitle("${getString(R.string.app_title)}：${s.summary}")
             .setContentText(s.detail.ifBlank { getString(R.string.notif_channel_desc) })
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(

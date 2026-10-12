@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">校园网保活</string>
+    <string name="app_title">XJTU-STU Auto Login</string>
     <string name="app_tagline">西交深澜 · 前台服务自动登录</string>
 
     <!-- 状态 -->
@@ -61,11 +62,11 @@
     <string name="gw_acid_hint">acid</string>
     <string name="account_user_hint">学号</string>
     <string name="account_pass_hint">密码</string>
-    <string name="account_type_hint">运营商后缀（西交校园网填 stu）</string>
+    <string name="account_type_hint">运营商后缀（默认 stu，一般不用改）</string>
     <string name="poll_interval">轮询间隔（秒）</string>
     <string name="timeout">请求超时（毫秒）</string>
-    <string name="target_ssids">校园网 SSID（逗号分隔，留空=任意）</string>
-    <string name="room_ssids">宿舍网 SSID（逗号分隔，检测到则跳过）</string>
+    <string name="target_ssids">校园网 SSID（默认 XJTU_STU，留空=任意网）</string>
+    <string name="room_ssids">宿舍网 SSID（可留空；填了就自动跳过）</string>
     <string name="auto_start">开机自动启动</string>
     <string name="auto_start_desc">开机后自动恢复保活（需系统允许自启动）</string>
     <string name="meta_os">os 参数</string>

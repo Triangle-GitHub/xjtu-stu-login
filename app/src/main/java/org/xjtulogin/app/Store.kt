@@ -18,7 +18,7 @@ data class Gateway(
 data class Account(
     val username: String = "",
     val password: String = "",
-    val userType: String = "",
+    val userType: String = "stu",
     val enabled: Boolean = true,
 )
 

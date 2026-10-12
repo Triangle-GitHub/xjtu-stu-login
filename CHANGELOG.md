@@ -65,3 +65,11 @@
 - 重构：循环体里那坨 try/catch 抽成 `attemptLogin(acc, gw, cfg, net, mode, sb)` + `Attempt`（online/ip/rejected/error/warn/bindRejected/answered），主循环只剩策略调度。
 - versionCode 4 / versionName 0.2.2。**交付**：`dist/xjtu-stu-login-v0.2.2.apk`（sha256 `c39ba8a118cd9ed93713c42e1b109a229b648d0b05a85f1d8f9552f8cac893ae`），已装机（未启动）。
 - ⏳ 待真机复核：开着 VPN 时状态里 `VPN:` 后面到底是哪一级；若停在「走默认路由」且仍失败 ⇒ VPN 在抢路由，需放行校园网段。
+
+## 2026-10-12（四）—— v0.3.0：面向「西交-STU 同学」的默认值 + 标题栏改名 + 学号脱敏
+
+- **标题栏改 `XJTU-STU Auto Login`**（工具栏与常驻通知共用新资源 `app_title`；桌面图标名仍为「校园网保活」，如需一并改英文可再说）。
+- **默认值按受众定死**：校园网 SSID 默认 `XJTU_STU`；宿舍网 SSID **留空即可**（留空=不跳过任何网络，提示文案已写明「可留空」）；账号运营商后缀 `Account.userType` 默认 **`stu`**（新增账号自动带 `@stu`，字段提示改「默认 stu，一般不用改」）。
+- **SSID 宽松匹配**：忽略大小写、`-`/空格 视作 `_` ⇒ 同学手输 `xjtu-stu`、`XJTU_STU`、`xjtu stu` 都能命中（原来只做精确比较）。
+- **学号脱敏**：日志与通知里学号显示为 `前4位****后2位@stu`（原来打全）。原因：这个 App 面向同学，最常见的泄露路径就是把「运行日志」贴到群里求助 —— 脱敏从源头掐掉。设置页仍显示完整学号（本机自己的数据）。
+- versionCode 5 / versionName 0.3.0。**交付**：`dist/xjtu-stu-login-v0.3.0.apk`（sha256 `54b290ad58b7024e46aab6c3be7dfd7e4c43e2d6ab9cf5002c865be53fe69918`），已装机（未启动）。
