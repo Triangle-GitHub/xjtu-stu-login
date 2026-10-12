@@ -90,6 +90,10 @@ class LoginService : Service() {
     @Volatile private var oneShot = false
     @Volatile private var wakeRequested = false
     @Volatile private var lastWakeAt = 0L
+    /** 本进程已被系统拒绝过「绑网卡」（EPERM）⇒ 之后一律走默认路由，不再白试 */
+    @Volatile private var bindBlocked = false
+    /** 实际走通的 VPN 路由策略（用于状态展示） */
+    @Volatile private var vpnStrategy: BindMode? = null
 
     private var netCallback: ConnectivityManager.NetworkCallback? = null
 
@@ -236,22 +240,15 @@ class LoginService : Service() {
         val pollMs = cfg.pollIntervalSec.coerceIn(5, 86400) * 1000L
         val net = WifiKit.snapshot(this)
 
-        // VPN（VPN 等）会抢走默认路由 ⇒ 把请求 socket 绑到 WiFi 网卡：直连网关、不穿隧道，
-        // 源 IP 也才会是网关认得的 WiFi 地址。绑定失败则退回默认路由（宁可试，也不要直接失败）。
-        var bindFailed = false
-        val binder: org.xjtulogin.core.ConnectionFactory? = net.wifiNetwork?.let { n ->
-            org.xjtulogin.core.ConnectionFactory { url ->
-                val bound = try {
-                    n.openConnection(url) as? java.net.HttpURLConnection
-                } catch (_: Throwable) {
-                    null
+        // 只有 VPN 活着时才需要绑网卡（没 VPN 时默认路由本来就是 WiFi，白绑还容易踩 OEM 限制）。
+        // 注意：EPERM 这类失败是在 connect 阶段抛的 —— 必须在上层重试兜底，不能只在这里 catch。
+        val binder: org.xjtulogin.core.ConnectionFactory? =
+            if (net.vpnActive) net.wifiNetwork?.let { n ->
+                org.xjtulogin.core.ConnectionFactory { url ->
+                    (n.openConnection(url) as? java.net.HttpURLConnection)
+                        ?: throw java.io.IOException("Binding socket to network failed: unsupported connection")
                 }
-                if (bound != null) bound else {
-                    bindFailed = true
-                    url.openConnection() as java.net.HttpURLConnection
-                }
-            }
-        }
+            } else null
 
         // 1) 宿舍网：跳过（不占用校园网账号）
         if (cfg.roomSsids.isNotEmpty() && net.ssid != null && net.ssid in cfg.roomSsids) {
@@ -292,7 +289,7 @@ class LoginService : Service() {
 
         if (net.vpnActive) {
             sb.append(
-                if (net.wifiNetwork != null) "! 检测到 VPN：登录请求已绑定 WiFi 网卡直连网关（不穿隧道）\n"
+                if (net.wifiNetwork != null) "! 检测到 VPN：登录请求将绑定 WiFi 网卡直连网关（不穿隧道）\n"
                 else "! 检测到 VPN 且找不到 WiFi 网络：可能无法直连网关\n"
             )
         }
@@ -308,16 +305,120 @@ class LoginService : Service() {
             for (gw in gateways) {
                 if (!running) break
                 attempts++
-                sb.append("→ ${acc.username} @ ${gw.domain} ")
-                val client = SrunClient(baseUrlOf(gw.domain), cfg.timeoutMs, connectionFactory = binder)
-                try {
-                    val (isOnline, ip) = client.loginStatus()
-                    if (isOnline) {
-                        sb.append("已在线 ✓\n")
+                val label = if (acc.userType.isNotBlank()) "${acc.username}@${acc.userType}" else acc.username
+                sb.append("→ $label @ ${gw.domain} ")
+
+                // VPN 下三级策略：绑 socket → 进程绑 WiFi → 默认路由（每级都被拒才降级）
+                var mode = if (net.vpnActive && net.wifiNetwork != null) {
+                    if (bindBlocked) BindMode.PROCESS else BindMode.SOCKET
+                } else BindMode.NONE
+
+                var r = attemptLogin(acc, gw, cfg, net, mode, sb)
+                if (!r.answered && mode == BindMode.SOCKET) {
+                    bindBlocked = true
+                    sb.append(
+                        if (r.bindRejected) "  · 系统拒绝绑网卡（EPERM），改试「进程绑 WiFi」…\n→ $label @ ${gw.domain} "
+                        else "  · 绑网卡这路没通，改试「进程绑 WiFi」…\n→ $label @ ${gw.domain} "
+                    )
+                    mode = BindMode.PROCESS
+                    r = attemptLogin(acc, gw, cfg, net, mode, sb)
+                }
+                if (!r.answered && mode == BindMode.PROCESS) {
+                    sb.append("  · 进程绑 WiFi 也不行，改走默认路由…\n→ $label @ ${gw.domain} ")
+                    mode = BindMode.NONE
+                    r = attemptLogin(acc, gw, cfg, net, mode, sb)
+                }
+                if (r.answered) vpnStrategy = mode
+
+                when {
+                    r.online -> {
                         online = true
-                        onlineIp = ip
+                        onlineIp = r.ip
                         break@loop
                     }
+                    r.rejected -> {
+                        lastError = r.error
+                        lastLevel = StatusLevel.OFFLINE
+                    }
+                    else -> {
+                        lastError = r.error
+                        lastLevel = if (r.warn) StatusLevel.WARN else StatusLevel.OFFLINE
+                    }
+                }
+            }
+        }
+
+        val ipText = onlineIp ?: net.ipv4
+        val summary = if (online) "已在线" else "未登录"
+        val detail = buildString {
+            append("SSID=").append(net.ssid ?: "未知")
+            append(" IP=").append(ipText ?: "-")
+            append(" · 尝试 ").append(attempts).append(" 次")
+            if (net.vpnActive) {
+                append(" · VPN:").append(
+                    when (vpnStrategy) {
+                        BindMode.SOCKET -> "已绕过(绑网卡)"
+                        BindMode.PROCESS -> "已绕过(进程绑WiFi)"
+                        else -> "走默认路由（若失败请在 VPN 放行校园网段）"
+                    }
+                )
+            }
+            if (!online && lastError != null) append(" · ").append(lastError)
+        }
+        publish(summary, detail, sb.toString(), if (online) StatusLevel.ONLINE else lastLevel)
+        return pollMs
+    }
+
+    /** VPN 下的路由策略：绑 socket → 进程绑 WiFi → 不绑（默认路由） */
+    private enum class BindMode { SOCKET, PROCESS, NONE }
+
+    private data class Attempt(
+        val online: Boolean = false,
+        val ip: String? = null,
+        val rejected: Boolean = false,
+        val error: String? = null,
+        val warn: Boolean = false,
+        val bindRejected: Boolean = false,
+        /** 网关真的应答了（拿到响应，而不只是网络错） */
+        val answered: Boolean = false,
+    )
+
+    /** 一轮「查在线状态 → 不在线就登录」；binder=null 表示走默认路由 */
+    @Suppress("DEPRECATION")
+    private fun attemptLogin(
+        acc: Account,
+        gw: Gateway,
+        cfg: AppConfig,
+        net: NetInfo,
+        mode: BindMode,
+        sb: StringBuilder,
+    ): Attempt {
+        val wifiNet = net.wifiNetwork
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        var processBound = false
+        if (mode == BindMode.PROCESS && wifiNet != null) {
+            processBound = try {
+                cm?.bindProcessToNetwork(wifiNet)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
+        try {
+            val binder = if (mode == BindMode.SOCKET && wifiNet != null) {
+                org.xjtulogin.core.ConnectionFactory { url ->
+                    (wifiNet.openConnection(url) as? java.net.HttpURLConnection)
+                        ?: throw java.io.IOException("Binding socket to network failed: unsupported connection")
+                }
+            } else null
+            val client = SrunClient(baseUrlOf(gw.domain), cfg.timeoutMs, connectionFactory = binder)
+            val ip = net.ipv4 ?: ""
+            return try {
+                val (isOnline, onlineIp) = client.loginStatus()
+                if (isOnline) {
+                    sb.append("已在线 ✓\n")
+                    Attempt(online = true, ip = onlineIp, answered = true)
+                } else {
                     sb.append("未在线，登录… ")
                     val form = LoginForm(
                         domain = gw.domain,
@@ -329,47 +430,50 @@ class LoginService : Service() {
                         acid = gw.acid, n = gw.n, type = gw.type,
                         os = cfg.metaOs, name = cfg.metaName,
                     )
-                    when (val r = client.doLogin(form, meta, net.ipv4 ?: "")) {
+                    when (val r = client.doLogin(form, meta, ip)) {
                         is SrunResult.Ok -> {
                             sb.append("登录成功 ✓ ${r.ip ?: ""}\n")
-                            online = true
-                            onlineIp = r.ip
-                            break@loop
+                            Attempt(online = true, ip = r.ip, answered = true)
                         }
                         is SrunResult.Rejected -> {
                             if (r.error.contains("online", ignoreCase = true)) {
                                 // 网关认为该 IP/账号已在线，等价于成功
                                 sb.append("网关提示已在线 ✓ (${r.error})\n")
-                                online = true
-                                break@loop
+                                Attempt(online = true, answered = true)
+                            } else {
+                                sb.append("拒绝: ${r.error}${loginErrorHint(r.error)}\n")
+                                Attempt(rejected = true, error = r.error, answered = true)
                             }
-                            sb.append("拒绝: ${r.error}${loginErrorHint(r.error)}\n")
-                            lastError = r.error
-                            lastLevel = StatusLevel.OFFLINE
                         }
                     }
-                } catch (t: Throwable) {
-                    val msg = friendlyError(t)
-                    sb.append("失败: $msg\n")
-                    lastError = msg
-                    lastLevel = if (msg.contains("拦截") || msg.contains("权限")) StatusLevel.WARN
-                    else StatusLevel.OFFLINE
+                }
+            } catch (t: Throwable) {
+                val msg = friendlyError(t)
+                sb.append("失败: $msg\n")
+                if (net.vpnActive && (t is java.net.SocketTimeoutException || t is java.net.ConnectException)) {
+                    sb.append("  · VPN 可能在抢路由：在 VPN 里把校园网段（10.6.0.0/16、10.172.0.0/16）设为直连，或临时关掉 VPN\n")
+                }
+                Attempt(
+                    error = msg,
+                    warn = msg.contains("拦截") || msg.contains("权限"),
+                    bindRejected = isBindRejected(t) || msg.contains("绑定 WiFi 网卡"),
+                )
+            }
+        } finally {
+            if (processBound) {
+                try {
+                    cm?.bindProcessToNetwork(null)
+                } catch (_: Throwable) {
                 }
             }
         }
+    }
 
-        val ipText = onlineIp ?: net.ipv4
-        val summary = if (online) "已在线" else "未登录"
-        val detail = buildString {
-            append("SSID=").append(net.ssid ?: "未知")
-            append(" IP=").append(ipText ?: "-")
-            append(" · 尝试 ").append(attempts).append(" 次")
-            if (net.vpnActive) append(" · VPN已绕过")
-            if (bindFailed) append(" · 绑定WiFi失败")
-            if (!online && lastError != null) append(" · ").append(lastError)
-        }
-        publish(summary, detail, sb.toString(), if (online) StatusLevel.ONLINE else lastLevel)
-        return pollMs
+    /** 是不是「系统不允许把 socket 绑到该网络」这类失败 */
+    private fun isBindRejected(t: Throwable): Boolean {
+        val m = t.message ?: return false
+        return m.contains("Binding socket to network", ignoreCase = true) ||
+            m.contains("EPERM", ignoreCase = true)
     }
 
     /** 网关错误码补一句人话（login_error 基本都是后缀/密码问题） */
@@ -394,6 +498,8 @@ class LoginService : Service() {
             raw.contains("CLEARTEXT", ignoreCase = true) ||
                 raw.contains("not permitted by network security policy", ignoreCase = true) ->
                 "系统拦截明文 HTTP（network security config 缺失）"
+            raw.contains("Binding socket to network", ignoreCase = true) ->
+                "系统拒绝绑网卡（EPERM），已改走默认路由"
             raw.contains("not an object") || raw.contains("<script", ignoreCase = true) ->
                 "该网关返回网页而非接口数据（可能不是当前网络的有效 AC）"
             t is java.net.SocketTimeoutException -> "连接网关超时"

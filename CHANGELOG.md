@@ -53,3 +53,15 @@
 - **测试**：引擎 8 → **10 条**（新增 `connectionFactoryIsUsed`、`connectionFactoryFailurePropagates`），全绿。
 - **顺带**：网关返回网页（`<script>` 重定向）而非 JSON 时，报错改为「该网关返回网页而非接口数据（可能不是当前网络的有效 AC）」。
 - **交付**：`dist/xjtu-stu-login-v0.2.1.apk`（6667444 B / sha256 `c34e36f97282647785fa2aa35bd5a33da670de94b481df141cbf1a416649acb5`）；已 `ssh phone` → Termux adb `install -r` 装机（versionCode 3，**未启动**）。
+
+## 2026-10-12（三）—— v0.2.2：VPN 下三级路由策略（修 v0.2.1 的 EPERM 硬失败）
+
+> 真机实测 v0.2.1（理论正确但一句 `Binding socket to network 432 failed: EPERM (Operation not permitted)` 全军覆没）：Android netd **拒绝 App 把 socket 绑到网卡**（华为 EMUI/HarmonyOS 上如此）。且这个错是 connect 阶段抛的 —— v0.2.1 那个「同步失败才退回」的兜底根本来不及触发，于是每轮 4 次尝试全废。v0.2.1 的第二个教训：**没 VPN 时也去绑网卡**，凭空踩 OEM 限制。
+
+- **只在 VPN 活着时才尝试绑**（没 VPN 时默认路由本来就是 WiFi，绑了没收益只有风险）。
+- **三级降级（每级真被拒才降）**：① `Network.openConnection` 绑 socket → ② `ConnectivityManager.bindProcessToNetwork(WiFi)` 进程绑（netd 另一条路径，不受 socket 级 EPERM 限制）→ ③ 默认路由；成功那级记入 `vpnStrategy`，状态显示 `VPN:已绕过(绑网卡)/已绕过(进程绑WiFi)/走默认路由`。
+- **判定用「网关是否真的应答」（`Attempt.answered`）**，而不是只看异常类型 —— 这样任何一级路由不通都会自动降级。
+- **可执行的提示**：VPN 下若超时/连接失败，日志直接给出「在 VPN 里把校园网段 10.6.0.0/16、10.172.0.0/16 设为直连，或临时关掉 VPN」。
+- 重构：循环体里那坨 try/catch 抽成 `attemptLogin(acc, gw, cfg, net, mode, sb)` + `Attempt`（online/ip/rejected/error/warn/bindRejected/answered），主循环只剩策略调度。
+- versionCode 4 / versionName 0.2.2。**交付**：`dist/xjtu-stu-login-v0.2.2.apk`（sha256 `c39ba8a118cd9ed93713c42e1b109a229b648d0b05a85f1d8f9552f8cac893ae`），已装机（未启动）。
+- ⏳ 待真机复核：开着 VPN 时状态里 `VPN:` 后面到底是哪一级；若停在「走默认路由」且仍失败 ⇒ VPN 在抢路由，需放行校园网段。
