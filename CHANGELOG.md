@@ -93,3 +93,9 @@
 6. **简化模式**：设置页默认只露「账号 + 开机自启」，网关/SSID/轮询参数收进「显示高级设置」开关。
 
 - versionCode 6 / versionName **1.0.0**。
+- **交付**：`dist/xjtu-stu-login-v1.0.0-release.apk`（2341447 B ≈ **2.3 MB**，
+  sha256 `2f16118b7b5df0987e7dcebc6d855bb2fe509991aa5d17ecace6fcf5727bd30c`，签名 `CN=xjtu-stu-login`）；
+  已装机真机（签名由 debug 换 release ⇒ 需卸载重装，**手机上的账号配置已清空，需重新填写**）。
+- **已推送**：`<自建 Gitea>` master + tag `v1.0.0`；历史经 `git filter-repo` 重写（`ref-phone/`、`ref-src/`
+  与真实学号/口令已从全部历史中清除，校验：ref 目录 0、旧口令 0、真实学号 0），旧历史备份为
+  `../xjtu-stu-login-history-backup-20261012.bundle`（**含旧凭据，仅本地保留，勿分发**）。
