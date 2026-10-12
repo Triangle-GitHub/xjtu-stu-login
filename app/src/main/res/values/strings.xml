@@ -61,7 +61,7 @@
     <string name="gw_acid_hint">acid</string>
     <string name="account_user_hint">学号</string>
     <string name="account_pass_hint">密码</string>
-    <string name="account_type_hint">运营商后缀（可空）</string>
+    <string name="account_type_hint">运营商后缀（西交校园网填 stu）</string>
     <string name="poll_interval">轮询间隔（秒）</string>
     <string name="timeout">请求超时（毫秒）</string>
     <string name="target_ssids">校园网 SSID（逗号分隔，留空=任意）</string>

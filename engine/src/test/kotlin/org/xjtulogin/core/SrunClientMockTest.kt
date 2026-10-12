@@ -117,4 +117,37 @@ class SrunClientMockTest {
         assertTrue(r is SrunResult.Rejected, "expect Rejected, got $r")
         assertEquals("E2531: 账号欠费，请及时充值", (r as SrunResult.Rejected).error)
     }
+
+    @Test
+    fun connectionFactoryIsUsed() {
+        var calls = 0
+        val bound = SrunClient(
+            baseUrl = "http://127.0.0.1:${server.address.port}/",
+            timeoutMs = 3000,
+            connectionFactory = ConnectionFactory { url ->
+                calls++
+                url.openConnection() as java.net.HttpURLConnection
+            },
+        )
+        val (online, ip) = bound.loginStatus()
+        assertTrue(online)
+        assertEquals("10.0.0.5", ip)
+        assertTrue(calls >= 1, "自定义连接工厂应被使用（Android 靠它把 socket 绑到 WiFi）")
+    }
+
+    @Test
+    fun connectionFactoryFailurePropagates() {
+        val broken = SrunClient(
+            baseUrl = "http://127.0.0.1:${server.address.port}/",
+            timeoutMs = 3000,
+            connectionFactory = ConnectionFactory { throw java.io.IOException("bind failed") },
+        )
+        var thrown: Throwable? = null
+        try {
+            broken.loginStatus()
+        } catch (t: Throwable) {
+            thrown = t
+        }
+        assertTrue(thrown is java.io.IOException, "expect IOException, got $thrown")
+    }
 }

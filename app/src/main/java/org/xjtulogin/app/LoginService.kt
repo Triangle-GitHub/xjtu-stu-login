@@ -236,6 +236,23 @@ class LoginService : Service() {
         val pollMs = cfg.pollIntervalSec.coerceIn(5, 86400) * 1000L
         val net = WifiKit.snapshot(this)
 
+        // VPN（VPN 等）会抢走默认路由 ⇒ 把请求 socket 绑到 WiFi 网卡：直连网关、不穿隧道，
+        // 源 IP 也才会是网关认得的 WiFi 地址。绑定失败则退回默认路由（宁可试，也不要直接失败）。
+        var bindFailed = false
+        val binder: org.xjtulogin.core.ConnectionFactory? = net.wifiNetwork?.let { n ->
+            org.xjtulogin.core.ConnectionFactory { url ->
+                val bound = try {
+                    n.openConnection(url) as? java.net.HttpURLConnection
+                } catch (_: Throwable) {
+                    null
+                }
+                if (bound != null) bound else {
+                    bindFailed = true
+                    url.openConnection() as java.net.HttpURLConnection
+                }
+            }
+        }
+
         // 1) 宿舍网：跳过（不占用校园网账号）
         if (cfg.roomSsids.isNotEmpty() && net.ssid != null && net.ssid in cfg.roomSsids) {
             val text = "宿舍网 ${net.ssid}，跳过登录"
@@ -245,7 +262,11 @@ class LoginService : Service() {
 
         // 2) 网络形态校验
         if (!net.wifi) {
-            val text = if (net.connected) "当前不是 WiFi（可能在用移动数据）" else "当前没有可用网络"
+            val text = when {
+                net.vpnActive && net.wifiNetwork == null -> "VPN 占用了默认网络，但没有可用的 WiFi 连接"
+                net.connected -> "当前不是 WiFi（可能在用移动数据）"
+                else -> "当前没有可用网络"
+            }
             publish("未连接 WiFi", text, text, StatusLevel.WARN)
             return pollMs
         }
@@ -269,6 +290,13 @@ class LoginService : Service() {
             sb.append("! 读不到 SSID（缺定位权限？）—— 已按未知网络继续尝试\n")
         }
 
+        if (net.vpnActive) {
+            sb.append(
+                if (net.wifiNetwork != null) "! 检测到 VPN：登录请求已绑定 WiFi 网卡直连网关（不穿隧道）\n"
+                else "! 检测到 VPN 且找不到 WiFi 网络：可能无法直连网关\n"
+            )
+        }
+
         var online = false
         var attempts = 0
         var lastError: String? = null
@@ -281,7 +309,7 @@ class LoginService : Service() {
                 if (!running) break
                 attempts++
                 sb.append("→ ${acc.username} @ ${gw.domain} ")
-                val client = SrunClient(baseUrlOf(gw.domain), cfg.timeoutMs)
+                val client = SrunClient(baseUrlOf(gw.domain), cfg.timeoutMs, connectionFactory = binder)
                 try {
                     val (isOnline, ip) = client.loginStatus()
                     if (isOnline) {
@@ -315,7 +343,7 @@ class LoginService : Service() {
                                 online = true
                                 break@loop
                             }
-                            sb.append("拒绝: ${r.error}\n")
+                            sb.append("拒绝: ${r.error}${loginErrorHint(r.error)}\n")
                             lastError = r.error
                             lastLevel = StatusLevel.OFFLINE
                         }
@@ -336,10 +364,21 @@ class LoginService : Service() {
             append("SSID=").append(net.ssid ?: "未知")
             append(" IP=").append(ipText ?: "-")
             append(" · 尝试 ").append(attempts).append(" 次")
+            if (net.vpnActive) append(" · VPN已绕过")
+            if (bindFailed) append(" · 绑定WiFi失败")
             if (!online && lastError != null) append(" · ").append(lastError)
         }
         publish(summary, detail, sb.toString(), if (online) StatusLevel.ONLINE else lastLevel)
         return pollMs
+    }
+
+    /** 网关错误码补一句人话（login_error 基本都是后缀/密码问题） */
+    private fun loginErrorHint(error: String): String = when {
+        error.contains("login_error", ignoreCase = true) ->
+            "（查账号密码，及运营商后缀：西交校园网填 stu）"
+        error.contains("E2531") || error.contains("欠费") -> "（账号欠费）"
+        error.contains("E2553") -> "（账号已在别处在线）"
+        else -> ""
     }
 
     private fun baseUrlOf(domain: String): String {
@@ -355,6 +394,8 @@ class LoginService : Service() {
             raw.contains("CLEARTEXT", ignoreCase = true) ||
                 raw.contains("not permitted by network security policy", ignoreCase = true) ->
                 "系统拦截明文 HTTP（network security config 缺失）"
+            raw.contains("not an object") || raw.contains("<script", ignoreCase = true) ->
+                "该网关返回网页而非接口数据（可能不是当前网络的有效 AC）"
             t is java.net.SocketTimeoutException -> "连接网关超时"
             t is java.net.ConnectException -> "无法连接网关（不在校园网？）"
             t is java.net.UnknownHostException -> "无法解析网关地址"

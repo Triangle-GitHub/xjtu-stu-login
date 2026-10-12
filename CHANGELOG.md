@@ -42,3 +42,13 @@
 - ⏳ 待办不变：M2 真机联调（用户实测）结果回填。
 - **文档事实校正**：M0 单测数 9 → **8**（`XEncodeGoldenTest` 3 + `SrunClientMockTest` 5）；DESIGN §7 构建环境重写（必须显式 JDK 21、默认 java 25 不可用、wrapper 免下载、aliyun 镜像 + 代理 7893 兜底、`gradle :engine:test` → `./gradlew`）；补 Go 的 PATH 与 `-out` 用法；README 目录补 `gradle/`。
 - **未能复核**：真机装机状态（`ssh phone` 不通，手机不在同网段）——M2 前提不变，但本次未再确认；APK 字节数与 sha256 已核对（6580814 B / `a63e1ad0…`）。
+
+## 2026-10-12（二）—— v0.2.1：VPN（VPN 覆盖网）下绕过隧道直连网关
+
+> 起因：真机实测 v0.2.0 —— 第一个错误是账号没填 `@stu` 后缀（配置问题，已解：设置页字段提示改为「西交校园网填 stu」、新增账号默认带 `stu`、网关返回 `login_error` 时日志直接给人话提示）；第二个错误是**手机开着 VPN 覆盖网时登录必失败**。
+
+- **根因**：VPN 抢占默认路由后（1）`ConnectivityManager.activeNetwork` 变成 VPN 隧道 ⇒ 旧逻辑判定「不是 WiFi」直接跳过、永不登录；（2）拿到的 IPv4 是隧道地址（172.31.x.x），网关根本不认；（3）即便发出去也是穿隧道，网关看到的源 IP 不对。
+- **修法**：给协议引擎开一个 `ConnectionFactory` 注入口（纯 JDK `fun interface`，引擎仍零 Android 依赖），App 侧用 `Network.openConnection(url)` 把请求 socket **绑定到 TRANSPORT_WIFI 那张网卡** ⇒ 报文从 WiFi 直出、不穿隧道，源 IP 与网关看到的一致。绑定失败自动退回默认路由（不硬失败），并在状态里标 `绑定WiFi失败`。
+- **WiFi 识别重写**（`WifiKit`）：显式在 `allNetworks` 里挑 `TRANSPORT_WIFI && !TRANSPORT_VPN` 的网络，SSID/IP/绑定都用它；`NetInfo` 新增 `vpnActive` / `wifiNetwork`。状态详情在绕过时显示 `· VPN已绕过`。
+- **测试**：引擎 8 → **10 条**（新增 `connectionFactoryIsUsed`、`connectionFactoryFailurePropagates`），全绿。
+- **顺带**：网关返回网页（`<script>` 重定向）而非 JSON 时，报错改为「该网关返回网页而非接口数据（可能不是当前网络的有效 AC）」。

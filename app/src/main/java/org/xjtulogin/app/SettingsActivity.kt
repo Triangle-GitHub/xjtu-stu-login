@@ -80,7 +80,7 @@ class SettingsActivity : AppCompatActivity() {
         cfg.gateways.forEach { addGatewayRow(it) }
         cfg.accounts.forEach { addAccountRow(it) }
         if (cfg.gateways.isEmpty()) addGatewayRow(Gateway())
-        if (cfg.accounts.isEmpty()) addAccountRow(Account())
+        if (cfg.accounts.isEmpty()) addAccountRow(Account(userType = "stu"))
 
         b.etPollInterval.setText(cfg.pollIntervalSec.toString())
         b.etTimeout.setText(cfg.timeoutMs.toString())
@@ -104,7 +104,7 @@ class SettingsActivity : AppCompatActivity() {
             markDirty()
         }
         b.btnAddAccount.setOnClickListener {
-            addAccountRow(Account())
+            addAccountRow(Account(userType = "stu"))
             markDirty()
         }
         b.fabSave.setOnClickListener { save() }

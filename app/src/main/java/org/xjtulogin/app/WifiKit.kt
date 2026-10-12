@@ -2,6 +2,7 @@ package org.xjtulogin.app
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
@@ -9,13 +10,17 @@ import android.os.Build
 import java.net.Inet4Address
 
 data class NetInfo(
-    /** 有活跃网络（可能是有线/移动数据） */
+    /** 有可用网络（可能是有线/移动数据/VPN） */
     val connected: Boolean,
-    /** 活跃网络是 WiFi */
+    /** 我们认定的 WiFi 网络可用（VPN 活着时也要求底层 WiFi 在） */
     val wifi: Boolean,
     /** 当前 SSID；null = 无 WiFi 或读不到（缺定位权限时会被系统打码） */
     val ssid: String?,
     val ipv4: String?,
+    /** VPN（VPN 等）正在占用默认网络 */
+    val vpnActive: Boolean = false,
+    /** 明确的 WiFi 网络对象：交给 SrunClient 绑 socket，绕开 VPN 抢占的路由 */
+    val wifiNetwork: Network? = null,
 ) {
     val ssidText: String get() = ssid ?: if (wifi) "未知 WiFi" else "无 WiFi"
 }
@@ -23,22 +28,44 @@ data class NetInfo(
 object WifiKit {
 
     /**
-     * 统一走 ConnectivityManager（activeNetwork + LinkProperties）：
-     * 这是 Android 10+ 的正路，WifiManager.connectionInfo 在部分 ROM 上会给出过期的 IP/SSID。
-     * SSID 仍需定位权限，拿不到就返回 null —— 调用方会「按未知网络继续尝试」而不是直接跳过。
+     * VPN 存活时 `activeNetwork` 是 VPN 隧道（TRANSPORT_VPN），
+     * 所以不能只看 activeNetwork —— 否则开了 VPN 就会误判「不是 WiFi」而永远不登录，
+     * 而且拿到的 IPv4 会是隧道地址（172.31.x.x），网关根本认不出。
+     * 这里显式挑出 TRANSPORT_WIFI 那张网卡：SSID / IP / socket 绑定都用它。
      */
     fun snapshot(context: Context): NetInfo {
         val app = context.applicationContext
         val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val net = cm?.activeNetwork
-        val caps = if (net != null && cm != null) cm.getNetworkCapabilities(net) else null
-        val lp = if (net != null && cm != null) cm.getLinkProperties(net) else null
+            ?: return NetInfo(false, false, null, null)
+
+        val active = cm.activeNetwork
+        val activeCaps = active?.let { runCatching { cm.getNetworkCapabilities(it) }.getOrNull() }
+        val vpnActive = activeCaps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+
+        val wifiNet = runCatching {
+            cm.allNetworks.firstOrNull { n ->
+                val caps = cm.getNetworkCapabilities(n) ?: return@firstOrNull false
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                    !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            }
+        }.getOrNull()
+
+        val chosen = wifiNet ?: active
+        val caps = chosen?.let { runCatching { cm.getNetworkCapabilities(it) }.getOrNull() }
+        val lp = chosen?.let { runCatching { cm.getLinkProperties(it) }.getOrNull() }
         val wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         val ipv4 = lp?.linkAddresses
             ?.firstOrNull { it.address is Inet4Address && !it.address.isLoopbackAddress }
             ?.address?.hostAddress
         val ssid = if (wifi) readSsid(app, caps) else null
-        return NetInfo(connected = net != null, wifi = wifi, ssid = ssid, ipv4 = ipv4)
+        return NetInfo(
+            connected = chosen != null,
+            wifi = wifi,
+            ssid = ssid,
+            ipv4 = ipv4,
+            vpnActive = vpnActive,
+            wifiNetwork = wifiNet,
+        )
     }
 
     private fun readSsid(ctx: Context, caps: NetworkCapabilities?): String? {

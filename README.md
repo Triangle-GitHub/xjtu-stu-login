@@ -8,7 +8,8 @@
   JVM 单测全绿：12 条 XEncode golden 向量与 BitSrunLoginGo 蓝本逐字节对齐 + mock 网关全流程。
 - ✅ **M1 App 壳**：`app/` Material 3 原生 App，构建产物 `xjtu-stu-login-v0.1.0.apk`。
 - ⏳ **M2 真机联调**：待装到手机实测（登录一次确认 `login_ok`，再开自动保活）。
-- ✅ **v0.2.0（2026-10-12）**：修复「无法保活」根因（系统默认拦明文 HTTP ⇒ 网关 `http://10.6.18.2` 被 `CLEARTEXT` 拒绝，已放行）+ 保活健壮性加固 + UI 重做到 Shizuku 水准。
+- ✅ **v0.2.1（2026-10-12）**：账号后缀 `@stu` 提示补全（网关 `login_error` 多为缺后缀）；**VPN（VPN 覆盖网）下绕过隧道**——把登录请求 socket 绑定到 WiFi 网卡（`Network.openConnection`），不再因 VPN 抢占默认路由而误判「不是 WiFi」或拿错源 IP。
+- ✅ **v0.2.0（前一版）（2026-10-12）**：修复「无法保活」根因（系统默认拦明文 HTTP ⇒ 网关 `http://10.6.18.2` 被 `CLEARTEXT` 拒绝，已放行）+ 保活健壮性加固 + UI 重做到 Shizuku 水准。
 - ✅ **仓库迁移 + 构建入口自治**（2026-10-11）：仓库落在 `.`；gradle wrapper 入库（钉 `9.6.1`）⇒ `./gradlew` 自洽；重建 APK 与交付件 sha256 一致（`a63e1ad0…`）。
 
 ## 功能（全参数可配）

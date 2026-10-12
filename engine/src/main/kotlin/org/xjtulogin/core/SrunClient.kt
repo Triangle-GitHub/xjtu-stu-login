@@ -117,13 +117,33 @@ fun goQueryEscape(s: String): String {
     return sb.toString()
 }
 
+/**
+ * 连接工厂：把「怎么建 socket」交给调用方。
+ *
+ * Android 侧的用途：把请求绑定到指定 Network（`Network.openConnection(url)`）——
+ * VPN（如 VPN 覆盖网）会抢走默认路由，绑到 WiFi 网卡后到校园网关的报文依旧直出、不穿隧道，
+ * 且源 IP 与网关看到的 WiFi IP 一致。引擎保持零 Android 依赖，这里只用 JDK 类型。
+ */
+fun interface ConnectionFactory {
+    /** 建立到 url 的连接；失败请抛 IOException */
+    @Throws(java.io.IOException::class)
+    fun open(url: java.net.URL): java.net.HttpURLConnection
+}
+
 /** 深澜 Srun 客户端（纯 JDK，JVM / Android 通用） */
 class SrunClient(
     val baseUrl: String = "http://10.6.18.2/",
     val timeoutMs: Int = 5000,
     val userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    /** 可选：接管连接创建（Android 传入绑定到 WiFi 的工厂，以绕开 VPN 抢占的默认路由） */
+    private val connectionFactory: ConnectionFactory? = null,
 ) {
     private fun base(): String = if (baseUrl.endsWith("/")) baseUrl else baseUrl + "/"
+
+    private fun openConnection(url: String): java.net.HttpURLConnection {
+        val u = java.net.URL(url)
+        return connectionFactory?.open(u) ?: (u.openConnection() as java.net.HttpURLConnection)
+    }
 
     /** GET {path}?{query}&callback=jQuery{21位}[1-9]_{ms}&_={ms}，返回 {} 剥壳后的 JSON 对象 */
     fun request(path: String, query: Map<String, String>): Map<String, Any?> {
@@ -137,7 +157,7 @@ class SrunClient(
         }
         sb.append("&_=").append(ms)
         val url = base() + path + "?" + sb
-        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        val conn = openConnection(url)
         conn.requestMethod = "GET"
         conn.connectTimeout = timeoutMs
         conn.readTimeout = timeoutMs
