@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material 3 暗色配色（与 values/colors.xml 同 role，同名覆盖） -->
+<resources>
+    <color name="md_primary">#A5C8FF</color>
+    <color name="md_on_primary">#00325B</color>
+    <color name="md_primary_container">#12497E</color>
+    <color name="md_on_primary_container">#D4E3FF</color>
+
+    <color name="md_secondary">#B7C8EA</color>
+    <color name="md_on_secondary">#203250</color>
+    <color name="md_secondary_container">#374765</color>
+    <color name="md_on_secondary_container">#D5E3FF</color>
+
+    <color name="md_tertiary">#4FD8EB</color>
+    <color name="md_on_tertiary">#00363D</color>
+    <color name="md_tertiary_container">#004F58</color>
+    <color name="md_on_tertiary_container">#97F0FF</color>
+
+    <color name="md_error">#FFB4AB</color>
+    <color name="md_on_error">#690005</color>
+    <color name="md_error_container">#93000A</color>
+    <color name="md_on_error_container">#FFDAD6</color>
+
+    <color name="md_success">#8FD694</color>
+    <color name="md_success_container">#1B4B22</color>
+    <color name="md_on_success_container">#C3EFC4</color>
+    <color name="md_warning">#EFC48C</color>
+    <color name="md_warning_container">#5C4200</color>
+
+    <color name="md_background">#101418</color>
+    <color name="md_on_background">#E2E2E6</color>
+    <color name="md_surface">#101418</color>
+    <color name="md_on_surface">#E2E2E6</color>
+    <color name="md_surface_variant">#44474F</color>
+    <color name="md_on_surface_variant">#C4C6D0</color>
+
+    <color name="md_surface_container_lowest">#0B0F12</color>
+    <color name="md_surface_container_low">#191C20</color>
+    <color name="md_surface_container">#1D2024</color>
+    <color name="md_surface_container_high">#272A2F</color>
+    <color name="md_surface_container_highest">#32353A</color>
+
+    <color name="md_outline">#8E9099</color>
+    <color name="md_outline_variant">#44474F</color>
+    <color name="md_scrim">#000000</color>
+    <color name="md_inverse_surface">#E2E2E6</color>
+    <color name="md_inverse_on_surface">#2F3033</color>
+    <color name="md_inverse_primary">#1F5E9E</color>
+    <color name="md_surface_tint">#A5C8FF</color>
+</resources>

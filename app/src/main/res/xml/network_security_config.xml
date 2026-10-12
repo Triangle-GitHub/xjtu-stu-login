@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  校园网网关（深澜 Srun）只提供 http://<ip>/ 明文接口（默认 10.6.18.2 / 10.6.21.2，用户可自配任意网关 IP）。
+  Android 9（API 28）起默认禁止明文流量 ⇒ 不放行时 HttpURLConnection 直接抛
+      java.net.UnknownServiceException: CLEARTEXT communication to 10.6.18.2 not permitted by network security policy
+  此时保活 100% 失败（UI 只显示「错误: CLEARTEXT ... not permitted」）。这里显式放开本 App 的明文流量；
+  trust-anchors 保留系统 CA，以便将来某网关换成 https 也能直接工作。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_s">8dp</dimen>
+    <dimen name="space_m">12dp</dimen>
+    <dimen name="space_l">16dp</dimen>
+    <dimen name="space_xl">20dp</dimen>
+    <dimen name="space_2xl">28dp</dimen>
+
+    <dimen name="page_padding">16dp</dimen>
+    <dimen name="radius_card">24dp</dimen>
+    <dimen name="radius_field">12dp</dimen>
+    <dimen name="status_dot">12dp</dimen>
+    <dimen name="icon_nav">22dp</dimen>
+</resources>

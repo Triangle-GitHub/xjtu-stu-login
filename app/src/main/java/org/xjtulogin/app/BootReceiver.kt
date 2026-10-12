@@ -6,12 +6,13 @@ import android.content.Intent
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        val cfg = AppStore.load(context)
-        if (cfg.autoStart && cfg.serviceEnabled) {
-            try {
-                context.startForegroundService(Intent(context, LoginService::class.java))
-            } catch (_: Exception) {
+        when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                val cfg = AppStore.load(context)
+                if (cfg.autoStart && cfg.serviceEnabled) {
+                    LoginService.start(context)
+                }
             }
         }
     }

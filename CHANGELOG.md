@@ -2,6 +2,25 @@
 
 > 追加型（最新在最下）。每条 = 一次持久化/交付。
 
+
+## 2026-10-12 —— v0.2.0：修复「无法保活」根因 + UI 全面重做
+
+- **修复 cleartext 拦网（保活失败根因）**：网关是 `http://10.6.18.2` 明文接口，Android 9+/targetSdk 28+ 默认禁止明文传输，`HttpURLConnection` 直接抛
+  `CLEARTEXT communication ... not permitted by network security policy`，每轮登录必失败 ⇒ UI 显示「无法保活」。
+  新增 `res/xml/network_security_config.xml`（`cleartextTrafficPermitted=true`，保留系统 CA）+ manifest `usesCleartextTraffic` 双保险放行。
+- **保活健壮性**（此前即使清了明文，服务也会被系统清理）：
+  - 网络变化立即重检：`ConnectivityManager.registerDefaultNetworkCallback` 唤醒轮询（3s 去抖），断网/切网不等下一个间隔；
+  - 心跳落盘：`StatusStore` 把心跳+上次状态写普通 prefs ⇒ 回前台能判断前台服务死活并自动自愈重启；
+  - 电池优化白名单：主界面新增「后台保活白名单」入口（`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`，ROM 无该页则退列表）；
+  - 单轮检测持 PARTIAL_WAKE_LOCK（Doze 下保证请求真发出去）；
+  - SSID 读不到不再永久跳过：缺定位权限按「未知网络」继续尝试并在日志提示；Android 13+ 同时请求 `NEARBY_WIFI_DEVICES` 与 `ACCESS_FINE_LOCATION`（仅靠近设备权限时 SSID 仍会被系统打码）；
+  - 配置/运行态读写加进程内缓存：不再每轮重建 MasterKey + EncryptedSharedPreferences（旧实现慢且偶发失败）；
+  - 网关地址支持自带 `https://`/`http://` 前缀；网关提示「IP has been online」视为已在线。
+- **UI 重做到 Shizuku 水准**：MD3 全量 color role 主题（亮/暗两套，交大蓝 #1F5E9E 种子）、NoActionBar + 大标题材质工具栏、大圆角填充卡片、
+  自适应图标（渐变蓝底白色 WiFi）、全套 Material 图标、设置页卡片化（FAB 保存 / 未保存脏标记 / 未保存返回确认）、高级参数折叠卡片、
+  状态点三色语义（在线绿 / 离线红 / 跳过黄）、常驻通知带「立即检测 / 停止」动作、日志可展开 / 复制。
+- **其他**：viewBinding 化；通知渠道在 Application 预建；开机自启补 `MY_PACKAGE_REPLACED`；versionCode 2 / versionName 0.2.0。
+
 ## 2026-09-27 —— 项目启动：设计 + M0 引擎 + M1 App 壳 + 上游回报
 
 - **立项**：从手机 Termux 取回 keep_srun v2.6 全量素材（`ref-phone/`）与 BitSrunLoginGo 源码蓝本（`ref-src/`）；确认手机 `bitsrun` = BitSrunLoginGo 编译产物（aarch64 ELF）。

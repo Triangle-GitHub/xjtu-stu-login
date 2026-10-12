@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 暗色：状态栏/导航栏用浅色图标（color role 由 values-night/colors.xml 覆盖） -->
+    <style name="Theme.XjtuLogin" parent="Theme.XjtuLogin.Base">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>
