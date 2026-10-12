@@ -13,9 +13,9 @@ build/
 */build/
 local.properties
 
-# APK 产物（dist/ 下的正式交付件例外——同学从仓库直接下载）
+# APK 产物（dist/ 下只允许 release 交付件——同学从仓库直接下载；debug 包绝不入库）
 *.apk
-!dist/*.apk
+!dist/*-release.apk
 
 # IDE
 .idea/
