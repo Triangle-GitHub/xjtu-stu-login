@@ -31,6 +31,10 @@ data class AppConfig(
     val roomSsids: List<String> = emptyList(),
     val autoStart: Boolean = true,
     val serviceEnabled: Boolean = false,
+    /** 首启三步引导被手动关掉 */
+    val onboardingDismissed: Boolean = false,
+    /** 设置页显示高级项（默认简化模式） */
+    val showAdvanced: Boolean = false,
     val metaOs: String = "Windows 2000",
     val metaName: String = "losedows",
 )
@@ -113,6 +117,8 @@ object AppStore {
                 roomSsids = o.optString("roomSsids", "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
                 autoStart = o.optBoolean("autoStart", true),
                 serviceEnabled = o.optBoolean("serviceEnabled", false),
+                onboardingDismissed = o.optBoolean("onboardingDismissed", false),
+                showAdvanced = o.optBoolean("showAdvanced", false),
                 metaOs = o.optString("metaOs", "Windows 2000"),
                 metaName = o.optString("metaName", "losedows"),
             )
@@ -143,6 +149,7 @@ object AppStore {
             .put("targetSsids", cfg.targetSsids.joinToString(","))
             .put("roomSsids", cfg.roomSsids.joinToString(","))
             .put("autoStart", cfg.autoStart).put("serviceEnabled", cfg.serviceEnabled)
+            .put("onboardingDismissed", cfg.onboardingDismissed).put("showAdvanced", cfg.showAdvanced)
             .put("metaOs", cfg.metaOs).put("metaName", cfg.metaName)
         try {
             prefs(context).edit().putString(KEY_JSON, o.toString()).apply()

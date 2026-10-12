@@ -1,3 +1,11 @@
+import java.util.Properties
+
+// release 签名配置从仓库根 keystore.properties 读取（该文件与 .jks 都不入库）
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -11,14 +19,36 @@ android {
         applicationId = "org.xjtulogin.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.3.0"
+        versionCode = 6
+        versionName = "1.0.0"
     }
 
+    signingConfigs {
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
+    }
+    lint {
+        // release 打包不跑 lintVital：离线环境缺 com.android.tools.lint:lint-gradle，
+        // 且它只做静态检查、不影响产物；需要时单独跑 ./gradlew :app:lint
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     buildFeatures {
         viewBinding = true

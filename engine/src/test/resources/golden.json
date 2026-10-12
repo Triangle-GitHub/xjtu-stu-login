@@ -3,12 +3,12 @@
     {
       "str": "sample-pass-0000",
       "key": "12345678",
-      "xen": "WPCqixiIQoxlS9bf"
+      "xen": "YWwingdlXAPO4/7zKOk5nNvrkJZ="
     },
     {
       "str": "2300000000",
       "key": "abcdefgh",
-      "xen": "Zo3jO6MG5TgimcBrQRIqIv=="
+      "xen": "AFaauUGBi1MHvfjDHHcsCS=="
     },
     {
       "str": "",
@@ -23,7 +23,7 @@
     {
       "str": "sample-pass-0000",
       "key": "ab",
-      "xen": "//VehWf2Eigbtlfi"
+      "xen": "LUkes6GXhmQQeBB8u5w/g9Z3NtH="
     },
     {
       "str": "p@ss/w+rd=1234\u0026%",
@@ -48,7 +48,7 @@
     {
       "str": "{\"acid\":\"1\",\"enc_ver\":\"srun_bx1\",\"ip\":\"10.18.17.26\",\"password\":\"sample-pass-0000\",\"username\":\"2300000000\"}",
       "key": "5b4f1a8e2c09d3f7",
-      "xen": "BxXeFlAtWNYavjn+QOHXPFFsPPZ4SgJtOijtoIwuk1H3L/viVBu7w8bzVjmM2mqLufg1eb54NbJZDar55BGNaqLijpJi8KB53K4uLj9uQr7QOWbuTXRmmfLMWFnnivBQcgQuBv=="
+      "xen": "at2GtyUWyYsSyS88czhniyaepILFgzkxeLNF2SeHJ0qNpv/ui8N6bTGiWjdDU8a09xikL3ZDhjWb/dw15PGS+kFw8KXiM1Eqst1yfLWyOEOqSkiItgSFArP+42E4SmieKcby4NBFGMvDObtBrggExS=="
     },
     {
       "str": "This is a very long plaintext string used to exercise the XTEA variant block cipher with more than one block. 0123456789012345678901234567890123456789",
@@ -69,8 +69,8 @@
     "ip": "10.18.17.26",
     "n": "200",
     "type": "1",
-    "info": "{SRBX1}BxXeFlAtWNYavjn+QOHXPFFsPPZ4SgJtOijtoIwuk1H3L/viVBu7w8bzVjmM2mqLufg1eb54NbJZDar55BGNaqLijpJi8KB53K4uLj9uQr7QOWbuTXRmmfLMWFnnivBQcgQuBv==",
-    "hmac": "c837c29aa5a92b8f537e39b1a974e04b",
-    "chksum": "1f4d4bf28688726ac5c70e8586d121e41d9d0e51\n"
+    "info": "{SRBX1}at2GtyUWyYsSyS88czhniyaepILFgzkxeLNF2SeHJ0qNpv/ui8N6bTGiWjdDU8a09xikL3ZDhjWb/dw15PGS+kFw8KXiM1Eqst1yfLWyOEOqSkiItgSFArP+42E4SmieKcby4NBFGMvDObtBrggExS==",
+    "hmac": "c316baf5b7cfe8d87304935b0ef889c9",
+    "chksum": "7d76fbb960227059f835582d86d11bf10243651b\n"
   }
 }

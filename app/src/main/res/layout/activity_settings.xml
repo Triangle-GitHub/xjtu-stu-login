@@ -37,8 +37,62 @@
             android:orientation="vertical"
             android:paddingHorizontal="@dimen/page_padding">
 
+            <!-- 简化模式开关：默认只露账号与保活 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Xjtu.Card.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_xs"
+                app:cardBackgroundColor="?attr/colorSurface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="@dimen/space_l">
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_tune"
+                        android:tint="?attr/colorPrimary"
+                        tools:ignore="UseAppTint" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_m"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/show_advanced"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/show_advanced_desc"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+                    </LinearLayout>
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/sw_advanced"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_m" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- 网关 -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_gateway"
                 style="@style/Widget.Xjtu.Card.Filled"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -141,6 +195,12 @@
                         android:paddingHorizontal="@dimen/space_l"
                         android:paddingBottom="@dimen/space_l">
 
+                        <LinearLayout
+                            android:id="@+id/param_extra"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
                         <com.google.android.material.textfield.TextInputLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -175,6 +235,7 @@
                             android:layout_height="1dp"
                             android:layout_marginTop="@dimen/space_l"
                             android:background="?attr/colorOutlineVariant" />
+                        </LinearLayout>
 
                         <LinearLayout
                             android:layout_width="match_parent"
@@ -216,6 +277,7 @@
 
             <!-- 网络匹配 -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_network"
                 style="@style/Widget.Xjtu.Card.Filled"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -274,6 +336,7 @@
 
             <!-- 高级（可折叠） -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_advanced"
                 style="@style/Widget.Xjtu.Card.Filled"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

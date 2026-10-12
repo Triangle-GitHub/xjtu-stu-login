@@ -45,15 +45,15 @@ export ANDROID_HOME=/opt/android-sdk
 engine/    # Kotlin 协议引擎（纯 JVM，零 Android 依赖，可离线单测）
 app/       # Android App 壳（MD3 UI + 前台服务 + 原生 WiFi + 安全存储）
 tools/     # 构建工具：vector-gen（Go 生成 golden 向量；需 PATH=/usr/local/go/bin:$PATH）
-ref-phone/ # 手机 Termux 取回参考（bitsrun aarch64 二进制 + 配置 + keep_srun v2.6）
-ref-src/   # BitSrunLoginGo pkg/srun 源码蓝本
 docs/      # DESIGN.md（设计文档）
 gradle/    # Gradle wrapper（钉 9.6.1）；gradlew 是唯一构建入口，不依赖全局 gradle
 ```
 
 ## ⚠️ 凭据
 
-`ref-phone/18`、`ref-phone/21` 含明文账号密码 —— `.gitignore` 已排除，禁止提交。
+手机 Termux 取回的参考材料（`ref-phone/`、`ref-src/`：bitsrun 二进制、明文账号密码配置、keep_srun 脚本、
+上游 BitSrunLoginGo 源码）**已移出本仓库**，现存放于 `（仓库外参考目录）/`，
+不随本仓库分发（其中含明文口令与宿舍 WiFi 口令）。仓库内任何位置都不得出现真实账号/口令。
 
 ## 真机联调（M2，用户执行）
 
@@ -66,3 +66,40 @@ APK 已装（未打开）：包 `org.xjtulogin.app`，华为 ALN-AL00 / Android 
 5. 点「启动保活」进入前台轮询（默认 60s）；宿舍 SSID 填了的话，连宿舍网时自动跳过。
 
 **如果失败**：记下状态页显示的网关错误（如 `拒绝: E2531: ...`）或超时现象；`rad_user_info` 与错误透传已在 mock 中覆盖，联调结果按错误码可快速定位。
+
+## 构建 release（1.0 起）
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export ANDROID_HOME=/opt/android-sdk
+./gradlew :engine:test :app:assembleRelease     # 产物：app/build/outputs/apk/release/app-release.apk
+```
+
+- release 走 **R8（minify + shrinkResources）**，签名从仓库根 `keystore.properties` 读取（**不入库**，模板见下）；
+  文件缺失时 release 产物不签名（可直接构建，但不可分发）。
+- 私钥：`~/keys/xjtu-stu-login-release.jks`（RSA 4096 / 30 年）—— **务必备份**，
+  丢了就无法再对已发布的 App 做覆盖升级（签名不一致，必须卸载重装）。
+
+```properties
+# keystore.properties（仓库根，gitignore 已排除）
+storeFile=~/keys/xjtu-stu-login-release.jks
+storePassword=***
+keyAlias=xjtulogin
+keyPassword=***
+```
+
+## 隐私
+
+- **无遥测、无上报、无第三方 SDK**：不收集任何使用数据，不打点，不联网除校园网网关外的任何地址。
+- **凭据仅存本机**：学号与密码写入 `EncryptedSharedPreferences`（Android Keystore / AES256），
+  不上传、不导出；卸载即消失。App 内可清账号。
+- **为什么需要定位权限**：Android 从 10 起把「读取 WiFi 名称（SSID）」归类为定位权限，
+  而判断「是否在 XJTU_STU」必须读 SSID。本 App 只用它做 SSID 匹配，不采集位置、不做定位。
+  拒绝授权也能用：此时无法判断 SSID，会按「未知网络」继续尝试登录（宿舍网则不会被自动跳过）。
+- **日志已脱敏**：界面与通知里的学号显示为 `前4位****后2位@stu`（同学常把运行日志贴到群里求助）。
+  复制出来的日志同样是脱敏的。
+
+## 后续待办
+
+- [ ] **运营商后缀改为下拉选择**（`stu` 预选、可留空）—— 现在仍是手输，一次输错就会得到网关 `login_error`（v0.1 实测踩过）。
+- [ ] **QS 磁贴 / 桌面小组件**：一键「立即检测 / 开关保活」，宿舍切回校园网后不必开 App。

@@ -29,7 +29,7 @@
 - **M0 协议引擎**（`engine/`）：XEncode/XBase64/SrunCrypto/SrunClient/MiniJson；**8 项 JVM 单测全绿**（12 条 golden 向量逐字节对齐 + chksum 全链路 + mock 网关 5 场景；原文写作「9 项」，2026-10-11 核实校正）。
 - **M1 App 壳**（`app/`）：MD3 设置页（网关/账号动态增删勾选 + 全参数）+ 状态页 + 前台服务 + 原生 WiFi + EncryptedSharedPreferences + 开机自启；`assembleDebug` 出 `xjtu-stu-login-v0.1.0.apk`（6.6 MB）。
 - **交付**：APK 已 ssh phone → Termux adb 静默安装至真机（HUAWEI ALN-AL00 / Android 12），未启动。
-- **上游回报**：发现 BitSrunLoginGo 两个 bug（XEncode pad 循环 off-by-one 潜在 panic；XDecode 不可逆），提交 https://github.com/Mmx233/BitSrunLoginGo/issues/64（无隐私信息）。
+- **上游回报**：发现 BitSrunLoginGo 两个 bug（XEncode pad 循环 off-by-one 潜在 panic；XDecode 不可逆），提交 https://github.com/Mmx233/BitSrunLoginGo/issues/64（⚠️ 2026-10-12 更正：该 issue 正文实含真实口令示例，属已公开信息，口令须轮换——见 2026-10-12 条目）。
 - **环境**：build-host 构建链就绪（JDK 21 / Gradle 8.13 / /opt/android-sdk；Go 1.24.5 仅用于 golden 生成器）。（2026-10-11 更新：构建改走仓库内 wrapper `9.6.1`；Go 在 `/usr/local/go/bin`，**不在默认 PATH**）
 - ⏳ 待办：M2 真机联调（用户实测）结果回填；WiFi 自动连接、双账号、release 签名为后续可选增强。
 
@@ -73,3 +73,23 @@
 - **SSID 宽松匹配**：忽略大小写、`-`/空格 视作 `_` ⇒ 同学手输 `xjtu-stu`、`XJTU_STU`、`xjtu stu` 都能命中（原来只做精确比较）。
 - **学号脱敏**：日志与通知里学号显示为 `前4位****后2位@stu`（原来打全）。原因：这个 App 面向同学，最常见的泄露路径就是把「运行日志」贴到群里求助 —— 脱敏从源头掐掉。设置页仍显示完整学号（本机自己的数据）。
 - versionCode 5 / versionName 0.3.0。**交付**：`dist/xjtu-stu-login-v0.3.0.apk`（sha256 `54b290ad58b7024e46aab6c3be7dfd7e4c43e2d6ab9cf5002c865be53fe69918`），已装机（未启动）。
+
+## 2026-10-12（五）—— v1.0.0：首个公开版本（P0 全做 + 同学向体验）
+
+**P0（发布前必做）**
+1. **release 签名 + R8**：固定 keystore（RSA 4096/30 年，`~/keys/xjtu-stu-login-release.jks`，口令在仓库根
+   `keystore.properties`，两者均不入库）；release 开启 `minifyEnabled`+`shrinkResources`，配套 `app/proguard-rules.pro`
+   （显式保留 Tink：`security-crypto` 走反射，R8 不保留会静默退化成明文 prefs）。debug 包 `debuggable=true`
+   任何人 adb 可调试读凭据 ⇒ 不再分发 debug 包。
+2. **LICENSE = AGPL-3.0**（XEncode 系 BitSrunLoginGo 的 Kotlin 移植，属衍生作品）+ **NOTICE** 列明来源与致谢
+   （BitSrunLoginGo / BIT-srun-login-script / AndroidX·Material·Tink）。
+3. **仓库清洗**：测试夹具与生成器里的真实学号/口令换成假值并**用假值重生成 `golden.json`**（引擎 10 测复跑绿）；
+   `ref-phone/`、`ref-src/`（含明文口令 tarball、宿舍 WiFi 口令、AGPL 上游源码、bitsrun 二进制）**移出仓库**至
+   `../xjtu-stu-login-refs/`，并用 `git filter-repo` 从全部历史中清除。
+4. **README 隐私段**：无遥测、凭据仅本机 Keystore、为何要定位权限、日志已脱敏。
+
+**同学向体验（本轮新增）**
+5. **首启三步引导**：主界面顶部卡片列出「填学号密码 → 电池白名单 → 启动保活」，完成项自动打绿勾，三步全绿或手动关掉后隐藏。
+6. **简化模式**：设置页默认只露「账号 + 开机自启」，网关/SSID/轮询参数收进「显示高级设置」开关。
+
+- versionCode 6 / versionName **1.0.0**。

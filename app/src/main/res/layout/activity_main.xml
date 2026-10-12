@@ -36,6 +36,87 @@
             android:orientation="vertical"
             android:paddingHorizontal="@dimen/page_padding">
 
+            <!-- 首启三步引导：三步都完成或手动关掉后隐藏 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/onboarding_card"
+                style="@style/Widget.Xjtu.Card.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_xs"
+                app:cardBackgroundColor="?attr/colorSurfaceContainerHigh">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="@dimen/space_l"
+                        android:paddingEnd="@dimen/space_xs"
+                        android:paddingVertical="@dimen/space_xs">
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/ic_check_circle"
+                            android:tint="?attr/colorPrimary"
+                            tools:ignore="UseAppTint" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/space_m"
+                            android:layout_weight="1"
+                            android:text="@string/onboarding_title"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <ImageButton
+                            android:id="@+id/btn_onboarding_close"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="@string/onboarding_close"
+                            android:src="@drawable/ic_close"
+                            app:tint="?attr/colorOnSurfaceVariant" />
+                    </LinearLayout>
+
+                    <include
+                        android:id="@+id/step_account"
+                        layout="@layout/item_nav"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="52dp"
+                        android:background="?attr/colorOutlineVariant" />
+
+                    <include
+                        android:id="@+id/step_battery"
+                        layout="@layout/item_nav"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="52dp"
+                        android:background="?attr/colorOutlineVariant" />
+
+                    <include
+                        android:id="@+id/step_start"
+                        layout="@layout/item_nav"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- 状态卡 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/status_card"

@@ -2,6 +2,17 @@
 <resources>
     <string name="app_name">校园网保活</string>
     <string name="app_title">XJTU-STU Auto Login</string>
+    <string name="onboarding_title">三步开始保活</string>
+    <string name="onboarding_close">关闭引导</string>
+    <string name="step_account_title">填入学号与密码</string>
+    <string name="step_account_desc">后缀已默认 stu，填完保存即可</string>
+    <string name="step_battery_title">加入电池优化白名单</string>
+    <string name="step_battery_desc">否则系统省电会掐掉保活</string>
+    <string name="step_start_title">启动保活</string>
+    <string name="step_start_desc">点「启动保活」即开始自动登录</string>
+    <string name="step_done_suffix"> · 已完成</string>
+    <string name="show_advanced">显示高级设置</string>
+    <string name="show_advanced_desc">网关 / SSID / 轮询参数（默认隐藏，够用就别动）</string>
     <string name="app_tagline">西交深澜 · 前台服务自动登录</string>
 
     <!-- 状态 -->

@@ -1,3 +1,8 @@
+# release 签名私钥与口令 —— 绝不入库
+keystore.properties
+*.jks
+*.keystore
+
 # 明文凭据配置文件 —— 禁止提交
 ref-phone/18
 ref-phone/21
@@ -8,8 +13,9 @@ build/
 */build/
 local.properties
 
-# APK 产物
+# APK 产物（dist/ 下的正式交付件例外——同学从仓库直接下载）
 *.apk
+!dist/*.apk
 
 # IDE
 .idea/

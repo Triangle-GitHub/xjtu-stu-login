@@ -19,6 +19,7 @@ import androidx.annotation.ColorRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import org.xjtulogin.app.databinding.ActivityMainBinding
+import org.xjtulogin.app.databinding.ItemNavBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,6 +74,17 @@ class MainActivity : AppCompatActivity() {
         b.itemNotification.root.setOnClickListener { PowerKit.openNotificationSettings(this) }
         b.itemNotification.navIcon.setImageResource(R.drawable.ic_notifications)
         b.itemNotification.navTitle.setText(R.string.nav_notification_title)
+
+        // 首启三步引导
+        b.stepAccount.root.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        b.stepBattery.root.setOnClickListener { PowerKit.requestIgnoreBatteryOptimizations(this) }
+        b.stepStart.root.setOnClickListener { startKeepAlive() }
+        b.btnOnboardingClose.setOnClickListener {
+            AppStore.save(this, AppStore.load(this).copy(onboardingDismissed = true))
+            refresh()
+        }
 
         b.btnToggleLog.setOnClickListener {
             logExpanded = !logExpanded
@@ -165,7 +177,36 @@ class MainActivity : AppCompatActivity() {
         b.dividerNotification.visibility = if (notifOk) View.GONE else View.VISIBLE
         if (!notifOk) b.itemNotification.navSubtitle.setText(R.string.notif_need)
 
+        // 首启引导：三步全绿或手动关掉后隐藏
+        val hasAccount = cfg.accounts.any { it.enabled && it.username.isNotBlank() }
+        val keepAliveOn = running && alive
+        markStep(b.stepAccount, R.drawable.ic_person, R.string.step_account_title,
+            R.string.step_account_desc, hasAccount)
+        markStep(b.stepBattery, R.drawable.ic_battery, R.string.step_battery_title,
+            R.string.step_battery_desc, batteryOk)
+        markStep(b.stepStart, R.drawable.ic_play, R.string.step_start_title,
+            R.string.step_start_desc, keepAliveOn)
+        val onboardingDone = hasAccount && batteryOk && keepAliveOn
+        b.onboardingCard.visibility =
+            if (onboardingDone || cfg.onboardingDismissed) View.GONE else View.VISIBLE
+
         applyLogState()
+    }
+
+    /** 引导步骤：未完成=原图标+说明；完成=绿勾+「已完成」 */
+    private fun markStep(
+        step: ItemNavBinding,
+        iconRes: Int,
+        titleRes: Int,
+        descRes: Int,
+        done: Boolean,
+    ) {
+        step.navIcon.setImageResource(if (done) R.drawable.ic_check_circle else iconRes)
+        step.navIcon.imageTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(this, if (done) R.color.md_success else R.color.md_primary)
+        )
+        step.navTitle.setText(titleRes)
+        step.navSubtitle.text = getString(descRes) + if (done) getString(R.string.step_done_suffix) else ""
     }
 
     @ColorRes

@@ -96,6 +96,22 @@ class SettingsActivity : AppCompatActivity() {
             b.etRoomSsids, b.etMetaOs, b.etMetaName
         ).forEach { it.addTextChangedListener(dirtyWatcher) }
         b.swAutoStart.setOnCheckedChangeListener { _, _ -> markDirty() }
+
+        b.swAdvanced.isChecked = cfg.showAdvanced
+        b.swAdvanced.setOnCheckedChangeListener { _, checked ->
+            applyAdvanced(checked)
+            markDirty()
+        }
+        applyAdvanced(cfg.showAdvanced)
+    }
+
+    /** 简化模式：默认只露账号 + 开机自启；网关/SSID/轮询参数收起 */
+    private fun applyAdvanced(show: Boolean) {
+        val v = if (show) View.VISIBLE else View.GONE
+        b.cardGateway.visibility = v
+        b.cardNetwork.visibility = v
+        b.cardAdvanced.visibility = v
+        b.paramExtra.visibility = v
     }
 
     private fun attachListeners() {
@@ -181,6 +197,7 @@ class SettingsActivity : AppCompatActivity() {
             metaOs = b.etMetaOs.text.toString().trim().ifEmpty { "Windows 2000" },
             metaName = b.etMetaName.text.toString().trim().ifEmpty { "losedows" },
             autoStart = b.swAutoStart.isChecked,
+            showAdvanced = b.swAdvanced.isChecked,
         )
         AppStore.save(this, cfg)
 
