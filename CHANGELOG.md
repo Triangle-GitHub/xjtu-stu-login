@@ -20,6 +20,7 @@
   自适应图标（渐变蓝底白色 WiFi）、全套 Material 图标、设置页卡片化（FAB 保存 / 未保存脏标记 / 未保存返回确认）、高级参数折叠卡片、
   状态点三色语义（在线绿 / 离线红 / 跳过黄）、常驻通知带「立即检测 / 停止」动作、日志可展开 / 复制。
 - **其他**：viewBinding 化；通知渠道在 Application 预建；开机自启补 `MY_PACKAGE_REPLACED`；versionCode 2 / versionName 0.2.0。
+- **交付**：`dist/xjtu-stu-login-v0.2.0.apk`（6664680 B / sha256 `434c1f8f3f63bbb94741bb309931eedf4b8d83349c44a8fa4455a529f732182d`）；`./gradlew :engine:test` 回归绿（8 测）。
 
 ## 2026-09-27 —— 项目启动：设计 + M0 引擎 + M1 App 壳 + 上游回报
 
