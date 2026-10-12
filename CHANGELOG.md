@@ -52,3 +52,4 @@
 - **WiFi 识别重写**（`WifiKit`）：显式在 `allNetworks` 里挑 `TRANSPORT_WIFI && !TRANSPORT_VPN` 的网络，SSID/IP/绑定都用它；`NetInfo` 新增 `vpnActive` / `wifiNetwork`。状态详情在绕过时显示 `· VPN已绕过`。
 - **测试**：引擎 8 → **10 条**（新增 `connectionFactoryIsUsed`、`connectionFactoryFailurePropagates`），全绿。
 - **顺带**：网关返回网页（`<script>` 重定向）而非 JSON 时，报错改为「该网关返回网页而非接口数据（可能不是当前网络的有效 AC）」。
+- **交付**：`dist/xjtu-stu-login-v0.2.1.apk`（6667444 B / sha256 `c34e36f97282647785fa2aa35bd5a33da670de94b481df141cbf1a416649acb5`）；已 `ssh phone` → Termux adb `install -r` 装机（versionCode 3，**未启动**）。
