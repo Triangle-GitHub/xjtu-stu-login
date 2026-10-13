@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 状态卡底：从主色容器渐变到面板色（亮/暗各一套色值由 values-night 提供） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="@dimen/radius_card" />
+    <gradient
+        android:angle="315"
+        android:endColor="@color/md_surface_container_high"
+        android:startColor="@color/md_primary_container"
+        android:type="linear" />
+</shape>

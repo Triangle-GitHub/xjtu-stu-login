@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package org.xjtulogin.app
 
 import android.os.Bundle
@@ -17,6 +18,10 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var b: ActivitySettingsBinding
     private var dirty = false
+
+    /** 动态行的绑定对象：保存时直接读，不再按 id 从视图树里找 */
+    private val gatewayRows = mutableListOf<GatewayRowBinding>()
+    private val accountRows = mutableListOf<AccountRowBinding>()
     private var advancedOpen = false
 
     private val dirtyWatcher = object : TextWatcher {
@@ -135,11 +140,13 @@ class SettingsActivity : AppCompatActivity() {
         row.gwEnabled.isChecked = gw.enabled
         row.btnDelGw.setOnClickListener {
             b.gwsContainer.removeView(row.root)
+            gatewayRows.remove(row)
             markDirty()
         }
         row.gwDomain.addTextChangedListener(dirtyWatcher)
         row.gwAcid.addTextChangedListener(dirtyWatcher)
         row.gwEnabled.setOnCheckedChangeListener { _, _ -> markDirty() }
+        gatewayRows.add(row)
         b.gwsContainer.addView(row.root)
     }
 
@@ -151,39 +158,39 @@ class SettingsActivity : AppCompatActivity() {
         row.accEnabled.isChecked = acc.enabled
         row.btnDelAcc.setOnClickListener {
             b.accountsContainer.removeView(row.root)
+            accountRows.remove(row)
             markDirty()
         }
         row.accUser.addTextChangedListener(dirtyWatcher)
         row.accPass.addTextChangedListener(dirtyWatcher)
         row.accType.addTextChangedListener(dirtyWatcher)
         row.accEnabled.setOnCheckedChangeListener { _, _ -> markDirty() }
+        accountRows.add(row)
         b.accountsContainer.addView(row.root)
     }
 
     // ------------------------------------------------------------- 保存
 
     private fun save() {
-        val gws = (0 until b.gwsContainer.childCount).mapNotNull { i ->
-            val row = b.gwsContainer.getChildAt(i)
-            val domain = row.findViewById<android.widget.EditText>(R.id.gw_domain).text.toString().trim()
+        val gws = gatewayRows.mapNotNull { row ->
+            val domain = row.gwDomain.text.toString().trim()
             if (domain.isEmpty()) return@mapNotNull null
             Gateway(
                 domain = domain,
-                enabled = row.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.gw_enabled).isChecked,
-                acid = row.findViewById<android.widget.EditText>(R.id.gw_acid).text.toString().trim().ifEmpty { "1" },
+                enabled = row.gwEnabled.isChecked,
+                acid = row.gwAcid.text.toString().trim().ifEmpty { "1" },
                 n = "200",
                 type = "1",
             )
         }
-        val accs = (0 until b.accountsContainer.childCount).mapNotNull { i ->
-            val row = b.accountsContainer.getChildAt(i)
-            val username = row.findViewById<android.widget.EditText>(R.id.acc_user).text.toString().trim()
+        val accs = accountRows.mapNotNull { row ->
+            val username = row.accUser.text.toString().trim()
             if (username.isEmpty()) return@mapNotNull null
             Account(
                 username = username,
-                password = row.findViewById<android.widget.EditText>(R.id.acc_pass).text.toString(),
-                userType = row.findViewById<android.widget.EditText>(R.id.acc_type).text.toString().trim(),
-                enabled = row.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.acc_enabled).isChecked,
+                password = row.accPass.text.toString(),
+                userType = row.accType.text.toString().trim(),
+                enabled = row.accEnabled.isChecked,
             )
         }
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package org.xjtulogin.app
 
 import android.Manifest
@@ -31,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     private var logExpanded = false
+    private var lastHeadline: String? = null
     private var busyUntil = 0L
 
     private val ticker = object : Runnable {
@@ -155,9 +157,32 @@ class MainActivity : AppCompatActivity() {
             getString(R.string.status_unknown_meta)
         }
 
-        b.statusDot.backgroundTintList = ColorStateList.valueOf(
-            ContextCompat.getColor(this, dotColor(running, alive, status.level))
+        // 状态徽章：颜色与图标随状态变；标题变化时做一次轻微弹入
+        b.statusBadge.backgroundTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(this, badgeColorRes(running, alive, status.level))
         )
+        b.statusBadgeIcon.setImageResource(
+            when {
+                !running -> R.drawable.ic_wifi
+                status.level == StatusLevel.ONLINE -> R.drawable.ic_check_circle
+                status.level == StatusLevel.OFFLINE -> R.drawable.ic_error
+                status.level == StatusLevel.WARN -> R.drawable.ic_info
+                else -> R.drawable.ic_wifi
+            }
+        )
+        val headline = b.statusMain.text.toString()
+        if (headline != lastHeadline) {
+            lastHeadline = headline
+            b.statusBadge.animate().cancel()
+            b.statusBadge.scaleX = 0.86f
+            b.statusBadge.scaleY = 0.86f
+            b.statusBadge.animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
+        }
+
+        // 网络胶囊：用结构化字段，不再解析 detail 文本
+        val ssid = status.ssid ?: getString(R.string.network_unknown)
+        val ip = status.ip
+        b.statusNetwork.text = if (ip.isNullOrBlank()) ssid else "$ssid · $ip"
 
         b.btnStart.isEnabled = !running
         b.btnStop.isEnabled = running
@@ -209,8 +234,9 @@ class MainActivity : AppCompatActivity() {
         step.navSubtitle.text = getString(descRes) + if (done) getString(R.string.step_done_suffix) else ""
     }
 
+    /** 徽章底色：在线绿 / 失败红 / 跳过黄 / 未启动灰 */
     @ColorRes
-    private fun dotColor(running: Boolean, alive: Boolean, level: StatusLevel): Int = when {
+    private fun badgeColorRes(running: Boolean, alive: Boolean, level: StatusLevel): Int = when {
         !running -> R.color.md_outline
         !alive -> R.color.md_error
         level == StatusLevel.ONLINE -> R.color.md_success

@@ -19,6 +19,7 @@
             style="@style/Widget.Xjtu.Toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
+            app:subtitle="@string/app_tagline"
             app:title="@string/app_title" />
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -117,74 +118,104 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 状态卡 -->
-            <com.google.android.material.card.MaterialCardView
+            <!-- 状态卡：渐变底 + 大状态徽章 + 网络胶囊 -->
+            <LinearLayout
                 android:id="@+id/status_card"
-                style="@style/Widget.Xjtu.Card.Filled"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_xs"
-                app:cardBackgroundColor="?attr/colorSurfaceContainerHigh">
+                android:background="@drawable/bg_hero"
+                android:orientation="vertical"
+                android:padding="@dimen/space_xl">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/space_xl">
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                    <FrameLayout
+                        android:layout_width="64dp"
+                        android:layout_height="64dp">
 
                         <View
-                            android:id="@+id/status_dot"
-                            android:layout_width="@dimen/status_dot"
-                            android:layout_height="@dimen/status_dot"
-                            android:background="@drawable/bg_status_dot"
-                            android:backgroundTint="?attr/colorOutline" />
+                            android:id="@+id/status_badge"
+                            android:layout_width="64dp"
+                            android:layout_height="64dp"
+                            android:background="@drawable/bg_status_badge"
+                            android:backgroundTint="?attr/colorPrimary" />
+
+                        <ImageView
+                            android:id="@+id/status_badge_icon"
+                            android:layout_width="30dp"
+                            android:layout_height="30dp"
+                            android:layout_gravity="center"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/ic_wifi"
+                            android:tint="#FFFFFFFF"
+                            tools:ignore="UseAppTint" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_l"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
                         <TextView
                             android:id="@+id/status_main"
-                            android:layout_width="0dp"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="@dimen/space_m"
-                            android:layout_weight="1"
                             android:text="@string/status_idle"
-                            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                            android:textAppearance="?attr/textAppearanceHeadlineMedium"
                             android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/status_meta"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="@dimen/space_xs"
+                            android:textAppearance="?attr/textAppearanceLabelMedium"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            tools:text="最后更新 14:28:41" />
                     </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/status_detail"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="@dimen/space_s"
-                        android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        tools:text="SSID=XJTU_STU IP=10.18.17.26 · 2 次尝试" />
-
-                    <TextView
-                        android:id="@+id/status_meta"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="@dimen/space_m"
-                        android:textAppearance="?attr/textAppearanceLabelMedium"
-                        android:textColor="?attr/colorPrimary"
-                        tools:text="最后更新 12:03:44" />
-
-                    <com.google.android.material.progressindicator.LinearProgressIndicator
-                        android:id="@+id/status_progress"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="@dimen/space_l"
-                        android:visibility="gone"
-                        app:trackCornerRadius="2dp"
-                        app:trackThickness="4dp"
-                        tools:visibility="visible" />
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+
+                <TextView
+                    android:id="@+id/status_network"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_l"
+                    android:background="@drawable/bg_pill"
+                    android:drawablePadding="@dimen/space_s"
+                    android:drawableStart="@drawable/ic_wifi"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="@dimen/space_m"
+                    android:paddingVertical="@dimen/space_s"
+                    android:textAppearance="?attr/textAppearanceLabelLarge"
+                    app:drawableTint="?attr/colorPrimary"
+                    tools:text="XJTU_STU · 10.172.155.57" />
+
+                <TextView
+                    android:id="@+id/status_detail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_m"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="SSID=XJTU_STU IP=10.172.155.57 · 尝试 1 次" />
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/status_progress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_l"
+                    android:visibility="gone"
+                    app:trackCornerRadius="2dp"
+                    app:trackThickness="4dp"
+                    tools:visibility="visible" />
+            </LinearLayout>
 
             <!-- 主动作 -->
             <LinearLayout
@@ -199,7 +230,7 @@
                     android:layout_height="56dp"
                     android:layout_weight="1"
                     android:text="@string/btn_start"
-                    app:icon="@drawable/ic_play" />
+                    app:icon="@drawable/ic_bolt" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_stop"

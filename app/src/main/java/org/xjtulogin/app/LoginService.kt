@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package org.xjtulogin.app
 
 import android.app.NotificationChannel
@@ -261,7 +262,7 @@ class LoginService : Service() {
         val netSsidKey = net.ssid?.let { ssidKey(it) }
         if (netSsidKey != null && netSsidKey in cfg.roomSsids.map { ssidKey(it) }) {
             val text = "宿舍网 ${net.ssid}，跳过登录"
-            publish("宿舍网，已跳过", text, "SSID=${net.ssid} IP=${net.ipv4 ?: "-"}\n已跳过本轮", StatusLevel.IDLE)
+            publish("宿舍网，已跳过", text, "SSID=${net.ssid} IP=${net.ipv4 ?: "-"}\n已跳过本轮", StatusLevel.IDLE, net.ssid, net.ipv4)
             return pollMs
         }
 
@@ -272,12 +273,12 @@ class LoginService : Service() {
                 net.connected -> "当前不是 WiFi（可能在用移动数据）"
                 else -> "当前没有可用网络"
             }
-            publish("未连接 WiFi", text, text, StatusLevel.WARN)
+            publish("未连接 WiFi", text, text, StatusLevel.WARN, net.ssid, net.ipv4)
             return pollMs
         }
         if (cfg.targetSsids.isNotEmpty() && netSsidKey != null && netSsidKey !in cfg.targetSsids.map { ssidKey(it) }) {
             val text = "当前 WiFi「${net.ssid}」不在目标列表 ${cfg.targetSsids}"
-            publish("不在校园网", text, text, StatusLevel.WARN)
+            publish("不在校园网", text, text, StatusLevel.WARN, net.ssid, net.ipv4)
             return pollMs
         }
 
@@ -385,7 +386,7 @@ class LoginService : Service() {
             }
             if (!online && lastError != null) append(" · ").append(lastError)
         }
-        publish(summary, detail, sb.toString(), if (online) StatusLevel.ONLINE else lastLevel)
+        publish(summary, detail, sb.toString(), if (online) StatusLevel.ONLINE else lastLevel, net.ssid, ipText)
         return pollMs
     }
 
@@ -549,8 +550,15 @@ class LoginService : Service() {
         }
     }
 
-    private fun publish(summary: String, detail: String, log: String, level: StatusLevel) {
-        StatusStore.update(this, summary, detail, log, level)
+    private fun publish(
+        summary: String,
+        detail: String,
+        log: String,
+        level: StatusLevel,
+        ssid: String? = null,
+        ip: String? = null,
+    ) {
+        StatusStore.update(this, summary, detail, log, level, ssid, ip)
         notifyStatus()
     }
 

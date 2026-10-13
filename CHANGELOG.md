@@ -152,3 +152,23 @@
   建议由未接触过上游实现者照 `docs/PROTOCOL.md` 再实现一版（现有 10 条测试即验收标准）。
 - versionCode 10 / versionName 1.1.0。**交付**：`dist/xjtu-stu-login-v1.1.0-release.apk`
   （sha256 `47adee7226cae08f2f149fd17732aa697df83c9de8e3d5ec6e991f1772af788e`，release 签名 `CN=xjtu-stu-login`）；已推送 tag `v1.1.0`。
+
+## 2026-10-13（二）—— v2.0.0：界面与代码整体润色 + 首发 GitHub
+
+> 面向公开发布的 2.0：界面按「一眼看懂状态」重做，代码做了一轮润色（去死代码、消警告、降耦合）。
+
+**界面**
+- 状态卡改为**渐变 Hero**（主色容器 → 面板色，24dp 圆角），左侧 **64dp 状态徽章**：在线绿勾 / 失败红叹 / 跳过黄叹 / 未启动灰；
+  状态标题升为 `HeadlineMedium`，标题栏加副标题（西交深澜 · 前台服务自动登录）；
+- 新增**网络胶囊**（`XJTU_STU · 10.172.155.57`）：状态改为**结构化保存** SSID/IP（`ServiceStatus` 新增字段并持久化），界面不再解析 detail 文本；
+- 状态切换时徽章做一次轻微弹入动画；「启动保活」改用闪电图标。
+
+**代码润色**
+- 所有 Kotlin 源文件补 `SPDX-License-Identifier: GPL-3.0-only`；
+- 设置页保存改为遍历**行绑定对象**（去掉按 `R.id` 从视图树 `findViewById` 的耦合，删除相关重复代码）；
+- 删除死代码（`NetInfo.ssidText`、`StatusStore.beat`）；消除 `allNetworks` / `connectionInfo` 的 deprecation 警告并注明为何仍需使用。
+
+- versionCode 20 / versionName **2.0.0**。**交付**：`dist/xjtu-stu-login-v2.0.0-release.apk`（sha256 `ee840a011d17935e2f7265f7070f206302284a3c5080bf3cdc7014e66362c03d`，release 签名）。
+- **仓库历史清洗**：`git filter-repo --replace-text` 将旧提交中的主机名、内网 IP、个人绝对路径等内网痕迹一并泛化
+  （当前树此前已清洗，本次覆盖历史）；清洗后校验：`build-host`/`phone`/`192.168.*`/`/home/ubuntu`/旧口令/真实学号 命中数均为 0。
+- **首发 GitHub（公开仓）**：仓库地址与 Release 见 README 顶部徽章。

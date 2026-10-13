@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package org.xjtulogin.app
 
 import android.content.Context
@@ -22,7 +23,6 @@ data class NetInfo(
     /** 明确的 WiFi 网络对象：交给 SrunClient 绑 socket，绕开 VPN 抢占的路由 */
     val wifiNetwork: Network? = null,
 ) {
-    val ssidText: String get() = ssid ?: if (wifi) "未知 WiFi" else "无 WiFi"
 }
 
 object WifiKit {
@@ -42,6 +42,9 @@ object WifiKit {
         val activeCaps = active?.let { runCatching { cm.getNetworkCapabilities(it) }.getOrNull() }
         val vpnActive = activeCaps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
 
+        // allNetworks 自 API 31 起标记 deprecated（推荐 registerNetworkCallback 持续跟踪），
+        // 但它是唯一能"一次性列出全部网络"的接口，正是这里绕过 VPN 需要的语义。
+        @Suppress("DEPRECATION")
         val wifiNet = runCatching {
             cm.allNetworks.firstOrNull { n ->
                 val caps = cm.getNetworkCapabilities(n) ?: return@firstOrNull false
@@ -68,6 +71,7 @@ object WifiKit {
         )
     }
 
+    @Suppress("DEPRECATION")
     private fun readSsid(ctx: Context, caps: NetworkCapabilities?): String? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val info = caps?.transportInfo

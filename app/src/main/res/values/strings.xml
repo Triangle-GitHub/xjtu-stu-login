@@ -19,6 +19,7 @@
     <string name="status_idle">未启动</string>
     <string name="status_checking">检测中…</string>
     <string name="status_unknown_meta">—</string>
+    <string name="network_unknown">未知网络</string>
     <string name="status_stopped_hint">保活已停止，点「启动保活」开始</string>
     <string name="status_dead_hint">前台服务似乎没在运行（可能被系统清理），点「启动保活」恢复</string>
     <string name="status_last_updated">最后更新 %1$s</string>

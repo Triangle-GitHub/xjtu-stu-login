@@ -24,7 +24,7 @@
 
 ## 下载与安装
 
-- 最新版本：[`dist/xjtu-stu-login-v1.1.0-release.apk`](dist/xjtu-stu-login-v1.1.0-release.apk)（约 2.3 MB，release 签名）
+- 最新版本：[`dist/xjtu-stu-login-v2.0.0-release.apk`](dist/xjtu-stu-login-v2.0.0-release.apk)（约 2.3 MB，release 签名）
 - 要求 Android 8.0+（minSdk 26）；安装时需允许「安装未知来源应用」
 - 升级：同一签名可直接覆盖安装，账号配置保留
 

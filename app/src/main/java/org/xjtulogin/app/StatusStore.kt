@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package org.xjtulogin.app
 
 import android.content.Context
@@ -11,6 +12,10 @@ data class ServiceStatus(
     val level: StatusLevel = StatusLevel.IDLE,
     val updatedAt: Long = 0L,
     val heartbeatAt: Long = 0L,
+    /** 当前 WiFi 名（可为空：无 WiFi 或读不到） */
+    val ssid: String? = null,
+    /** 当前/认证 IP */
+    val ip: String? = null,
 )
 
 /**
@@ -28,6 +33,8 @@ object StatusStore {
     private const val K_LEVEL = "level"
     private const val K_UPDATED = "updated_at"
     private const val K_HEARTBEAT = "heartbeat_at"
+    private const val K_SSID = "ssid"
+    private const val K_IP = "ip"
 
     @Volatile private var cache: ServiceStatus? = null
 
@@ -49,23 +56,27 @@ object StatusStore {
                 .getOrDefault(StatusLevel.IDLE),
             updatedAt = p.getLong(K_UPDATED, 0L),
             heartbeatAt = p.getLong(K_HEARTBEAT, 0L),
+            ssid = p.getString(K_SSID, null),
+            ip = p.getString(K_IP, null),
         )
         cache = s
         return s
     }
 
-    fun update(ctx: Context, summary: String, detail: String, log: String, level: StatusLevel) {
+    fun update(
+        ctx: Context,
+        summary: String,
+        detail: String,
+        log: String,
+        level: StatusLevel,
+        ssid: String? = null,
+        ip: String? = null,
+    ) {
         val now = System.currentTimeMillis()
         persist(
             ctx,
-            ServiceStatus(summary, detail, log.takeLast(4000), level, now, now)
+            ServiceStatus(summary, detail, log.takeLast(4000), level, now, now, ssid, ip)
         )
-    }
-
-    /** 只刷新心跳（本轮被跳过、没有新结论时用） */
-    fun beat(ctx: Context) {
-        val cur = get(ctx)
-        persist(ctx, cur.copy(heartbeatAt = System.currentTimeMillis()))
     }
 
     /** 前台服务是否还在按节奏心跳 */
@@ -86,6 +97,8 @@ object StatusStore {
                 .putString(K_LEVEL, s.level.name)
                 .putLong(K_UPDATED, s.updatedAt)
                 .putLong(K_HEARTBEAT, s.heartbeatAt)
+                .putString(K_SSID, s.ssid)
+                .putString(K_IP, s.ip)
                 .apply()
         } catch (_: Throwable) {
         }
