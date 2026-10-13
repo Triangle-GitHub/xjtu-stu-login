@@ -36,6 +36,13 @@ class LoginService : Service() {
     companion object {
         const val CHANNEL_ID = "keepalive"
         const val NOTIF_ID = 1001
+
+        /**
+         * XJTU 全网实测只有这 4 个 srun 端点（2026-10-12 从校园网内扫 10.6.0-254.2 / 10.69.x.2 / 10.172.x.2 得出）：
+         * 10.6.8.2 是总门户（老版本响应形态），18.2 / 21.2 / 27.2 是各区域 AC。
+         * 用户配置之外自动兜底试这些 —— 食堂等区域归不同的 AC 服务，发给错的 AC 只会得到 login_error。
+         */
+        private val BUILTIN_GATEWAYS = listOf("10.6.8.2", "10.6.18.2", "10.6.21.2", "10.6.27.2")
         const val ACTION_START = "org.xjtulogin.app.action.START"
         const val ACTION_STOP = "org.xjtulogin.app.action.STOP"
         const val ACTION_CHECK_NOW = "org.xjtulogin.app.action.CHECK_NOW"
@@ -275,7 +282,11 @@ class LoginService : Service() {
         }
 
         val accounts = cfg.accounts.filter { it.enabled && it.username.isNotBlank() }
-        val gateways = cfg.gateways.filter { it.enabled && it.domain.isNotBlank() }
+        // 配置的网关优先（顺序即优先级），再补上没配过的内置端点；上次成功的排最前
+        val configured = cfg.gateways.filter { it.enabled && it.domain.isNotBlank() }
+        val known = configured.map { hostOf(it.domain) }.toSet()
+        val gateways = (configured + BUILTIN_GATEWAYS.filter { it !in known }.map { Gateway(it) })
+            .sortedByDescending { hostOf(it.domain) == cfg.lastGoodGateway }
         if (accounts.isEmpty() || gateways.isEmpty()) {
             val text = "请在设置里添加并勾选账号与网关"
             publish("缺少配置", text, text, StatusLevel.WARN)
@@ -331,6 +342,13 @@ class LoginService : Service() {
                     r = attemptLogin(acc, gw, cfg, net, mode, sb)
                 }
                 if (r.answered) vpnStrategy = mode
+                if (r.online) {
+                    // 记住这个区域能用的网关，下次直接先试它
+                    val host = hostOf(gw.domain)
+                    if (cfg.lastGoodGateway != host) {
+                        AppStore.save(this, AppStore.load(this).copy(lastGoodGateway = host))
+                    }
+                }
 
                 when {
                     r.online -> {
@@ -497,6 +515,10 @@ class LoginService : Service() {
         error.contains("E2553") -> "（账号已在别处在线）"
         else -> ""
     }
+
+    /** 去掉协议前缀与结尾斜杠，只留 host（用于比对/记忆） */
+    private fun hostOf(domain: String): String =
+        domain.removePrefix("http://").removePrefix("https://").trimEnd('/')
 
     private fun baseUrlOf(domain: String): String {
         val base = if (domain.startsWith("http://") || domain.startsWith("https://")) domain

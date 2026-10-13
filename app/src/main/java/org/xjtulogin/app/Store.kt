@@ -35,6 +35,8 @@ data class AppConfig(
     val onboardingDismissed: Boolean = false,
     /** 设置页显示高级项（默认简化模式） */
     val showAdvanced: Boolean = false,
+    /** 上次登录成功的网关（下次优先试它，少打几次网关） */
+    val lastGoodGateway: String = "",
     val metaOs: String = "Windows 2000",
     val metaName: String = "losedows",
 )
@@ -119,6 +121,7 @@ object AppStore {
                 serviceEnabled = o.optBoolean("serviceEnabled", false),
                 onboardingDismissed = o.optBoolean("onboardingDismissed", false),
                 showAdvanced = o.optBoolean("showAdvanced", false),
+                lastGoodGateway = o.optString("lastGoodGateway", ""),
                 metaOs = o.optString("metaOs", "Windows 2000"),
                 metaName = o.optString("metaName", "losedows"),
             )
@@ -150,6 +153,7 @@ object AppStore {
             .put("roomSsids", cfg.roomSsids.joinToString(","))
             .put("autoStart", cfg.autoStart).put("serviceEnabled", cfg.serviceEnabled)
             .put("onboardingDismissed", cfg.onboardingDismissed).put("showAdvanced", cfg.showAdvanced)
+            .put("lastGoodGateway", cfg.lastGoodGateway)
             .put("metaOs", cfg.metaOs).put("metaName", cfg.metaName)
         try {
             prefs(context).edit().putString(KEY_JSON, o.toString()).apply()
