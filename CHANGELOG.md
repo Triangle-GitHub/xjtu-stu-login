@@ -111,3 +111,15 @@
   现有安装无需改配置即可受益；同时新增 `AppConfig.lastGoodGateway`：**登录成功后记住该区域能用的网关，下轮优先试它**（少打几次网关、更快更省电）。
 - versionCode 7 / versionName 1.0.1。**交付**：`dist/xjtu-stu-login-v1.0.1-release.apk`（2342583 B，sha256 `861841b5ea2c226b1f97002d…`）。
 - ⏳ 待真机复核：食堂现场 ① 手动加 `10.6.8.2`（或 27.2）到网关列表看是否 `登录成功`；② 装 v1.0.1 后自动兜底是否生效、日志里是否出现新的 host。
+
+## 2026-10-12（七）—— v1.0.2：食堂失败的真因（认证 IP 取错）+ 更正 v1.0.1 的判断
+
+> 用户追问：「bitsrun 用配置 21（= `10.6.21.2`）在食堂就直接成功，那怎么会是 AC 选错？」—— 追问成立，v1.0.1 的结论只对了一半。
+
+- **真因**：上游 `pkg/srun/srun.go:65` 的 `LoginStatus()` 返回 **`res["client_ip"]`**，`internal/login/login.go` 直接把它当认证 IP（`clientIp = *ip` → `loginIp = clientIp`）；只有响应缺该字段时才退到门户页面嗅探（`DetectIp()` 正则 `ip\s*:\s*"(.+)"`）。
+  **即：bitsrun 的认证 IP 来自「网关自己报的地址」，不是手机网卡的 IP。**
+  我们的实现一直把本机 WiFi IP（`LinkProperties`）当认证 IP 发出去 —— 多数区域两者相同（所以一直能用），**食堂那片两者不一致 ⇒ 网关照着自己认的 IP 找不到该地址 ⇒ `login_error`**。
+  （同一族问题的另一面：v0.2.0 日志里那条 `not an object: <script>top.self.location.href=…`，正是上游 `Detector._FollowRedirect` 专门处理的「JS 跳转页」，我们既不跟随也不解析。）
+- **修法（v1.0.2）**：`attemptLogin()` 改为 `authIp = 网关上报的 client_ip ?: 本机 IP`，并用它做 `get_challenge`/`srun_portal` 的 `ip`；两者不一致时在日志里显式打出 `(认证IP=x ≠ 本机 y)`，以后一眼可辨。
+- **v1.0.1 的更正**：补全 4 个 srun 端点仍然保留（无害兜底、且对真·跨区域有帮助），但**它不是食堂问题的钥匙**；当时的「AC 选错」判断是把「认证 IP 不匹配」误读成了「网关不匹配」。唯一还能证明 AC 名单价值的场景是：某区域的 AC 完全不在那 4 个里（本机扫描所见范围内不存在）。
+- versionCode 8 / versionName 1.0.2。**交付**：`dist/xjtu-stu-login-v1.0.2-release.apk`（sha256 `ef1d359d98ed75cf33b56bf86b329063952f61b960e7ce6abb98513760ec3eb6`），已装机（release→release 覆盖，配置保留）。

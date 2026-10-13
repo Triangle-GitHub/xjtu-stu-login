@@ -432,14 +432,19 @@ class LoginService : Service() {
                 }
             } else null
             val client = SrunClient(baseUrlOf(gw.domain), cfg.timeoutMs, connectionFactory = binder)
-            val ip = net.ipv4 ?: ""
+            val localIp = net.ipv4 ?: ""
             return try {
-                val (isOnline, onlineIp) = client.loginStatus()
+                val (isOnline, gwIp) = client.loginStatus()
+                // 认证 IP 必须用「网关自己报的 client_ip」—— 那才是网关认的地址。
+                // 本机网卡 IP 在部分区域（实测：食堂）与它不一致 ⇒ 拿本机 IP 去登录会被判 login_error。
+                // 上游 BitSrunLoginGo 同样取自 LoginStatus() 的 client_ip（仅当响应缺失时才去门户页面嗅探）。
+                val authIp = gwIp?.takeIf { it.isNotBlank() } ?: localIp
                 if (isOnline) {
                     sb.append("已在线 ✓\n")
-                    Attempt(online = true, ip = onlineIp, answered = true)
+                    Attempt(online = true, ip = gwIp ?: authIp, answered = true)
                 } else {
                     sb.append("未在线，登录… ")
+                    if (authIp != localIp) sb.append("(认证IP=$authIp ≠ 本机 $localIp) ")
                     val form = LoginForm(
                         domain = gw.domain,
                         username = acc.username,
@@ -450,7 +455,7 @@ class LoginService : Service() {
                         acid = gw.acid, n = gw.n, type = gw.type,
                         os = cfg.metaOs, name = cfg.metaName,
                     )
-                    when (val r = client.doLogin(form, meta, ip)) {
+                    when (val r = client.doLogin(form, meta, authIp)) {
                         is SrunResult.Ok -> {
                             sb.append("登录成功 ✓ ${r.ip ?: ""}\n")
                             Attempt(online = true, ip = r.ip, answered = true)
