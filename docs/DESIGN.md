@@ -1,4 +1,8 @@
-# xjtu-stu-login — 设计文档（v0.2）
+# xjtu-stu-login — 设计文档（v0.2 · 历史记录）
+
+> ⚠️ **本文是 v0.2 时期的设计与取证记录。** v1.1.0 起 `engine/` 已按公开协议规范（[PROTOCOL.md](PROTOCOL.md)）
+> 与 **MIT 许可的参考实现**独立重写，整仓许可为 GPL-3.0。因此下文凡涉及「移植上游 pkg/srun」「源码蓝本」
+> 「golden 生成器 tools/vector-gen」的描述，均属当时情况（该生成器已删除；`golden.json` 转为冻结夹具）。
 
 > 状态：**M0 协议引擎 ✅ 已实现（单测全绿）· M1 App 壳 ✅ 已实现（APK 已构建并装入真机）· M2 真机联调 ⏳ 待用户实测**
 > 
@@ -174,13 +178,14 @@ M0 与 M1 可并行推进（引擎纯 JVM，不依赖壳）。
   1. goldenVectorsMatch / emptyStringEdge：XEncode 12 条向量（含中文/空串/特殊字符/长文本/短 key）与 Go 蓝本生成的 `golden.json` 逐字节对齐，并单测空串入口→空串出口；
   2. checksumGoldenCase：`{MD5}+hmac-md5`、`{SRBX1}+XEncode(info)`、`sha1(%x\n)` 全链路与 golden 一致；
   3. mock 网关（com.sun.net.httpserver）5 场景：登录成功 / 提交参数形态（password={MD5}、info={SRBX1}、chksum 尾换行且重算一致）/ rad_user_info 在线判定 / 登出 / 错误透传（Rejected）。
-- golden 生成器：`tools/vector-gen/`（Go，vendored 自 BitSrunLoginGo 的 XEncode/XBase64 + 修正 pad），产物 `engine/src/test/resources/golden.json`（虚构测试串，无真实凭据）。重跑：`cd tools/vector-gen && PATH=/usr/local/go/bin:$PATH go run . -out ../../engine/src/test/resources/golden.json`（Go 1.24.5 装在 `/usr/local/go/bin`，**不在默认 PATH**；`-out` 省略时写当前目录下的 `engine/src/test/resources/golden.json`）。
+- golden 向量：`engine/src/test/resources/golden.json`（12 条逐字节向量，虚构测试串、无真实凭据）。
+  **v1.1.0 起转为冻结夹具**，生成器 `tools/vector-gen/` 已删除（其实现源自 AGPL 上游，与整仓 GPL-3.0 的许可目标不符）。
 
 ### 9.2 上游发现（已回报 issue #64）
 
 - **Bug A**：XEncode 密钥补零循环 off-by-one（`for i := 0; i < (4-len(pwdk)); i++` 条件每次迭代重算 → pwdk 停在 3 组，短 token<16 字节时 `pwdk[3]` panic）。XJTU token ≥16 字节不触发 → 潜伏。Kotlin 侧按意图补满 4 并注明。
 - **Bug B**：XDecode 不可逆（Go 原样跑 `XDecode(XEncode(x))` 返回空）。协议只用 XEncode，Kotlin 侧保持与上游一致（对齐、不修）。
-- 已提交 https://github.com/Mmx233/BitSrunLoginGo/issues/64（英文，无隐私信息）。
+- 已提交 https://github.com/Mmx233/BitSrunLoginGo/issues/64（英文；⚠️ 该 issue 正文实含真实口令示例，属已公开信息，口令须轮换 —— 见 CHANGELOG 2026-10-12 条目）。
 
 ### 9.3 App 壳（M1）
 

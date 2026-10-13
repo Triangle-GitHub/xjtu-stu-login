@@ -150,4 +150,5 @@
 - **诚实声明**：重写者此前阅读过 AGPL 上游源码，因此本轮属于**换血统 + 重写表达**，
   并非教科书式 clean-room（后者要求实现者从未接触上游代码）。若需要最强证据链，
   建议由未接触过上游实现者照 `docs/PROTOCOL.md` 再实现一版（现有 10 条测试即验收标准）。
-- versionCode 10 / versionName 1.1.0。
+- versionCode 10 / versionName 1.1.0。**交付**：`dist/xjtu-stu-login-v1.1.0-release.apk`
+  （sha256 `47adee7226cae08f2f149fd17732aa697df83c9de8e3d5ec6e991f1772af788e`，release 签名 `CN=xjtu-stu-login`）；已推送 tag `v1.1.0`。

@@ -6,7 +6,7 @@ package org.xjtulogin.core
  *
  * 按公开协议规范（docs/PROTOCOL.md）与 MIT 许可的参考实现
  * （BIT-srun-login-script，© 2020 coffeehat，全文见 licenses/MIT-BIT-srun-login-script.txt）
- * 独立编写；不包含任何 AGPL 代码。
+ * 独立编写；不包含第三方实现的源码。
  *
  * 规范要点：
  *  1. 明文与密钥都按「4 字节小端」打包成 32 位字，明文末组不足 4 字节补 0；
