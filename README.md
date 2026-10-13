@@ -108,7 +108,7 @@ keyPassword=***     # PKCS12 keystore 要求与 storePassword 相同
 ```
 engine/   # Kotlin 协议引擎（纯 JVM，零 Android 依赖，可离线单测）
 app/      # Android App（MD3 UI + 前台服务 + 原生 WiFi + Keystore 存储）
-docs/     # DESIGN.md 等设计与取证记录
+docs/     # 设计文档（DESIGN.md / PROTOCOL.md）与上游 bug 回报存档
 dist/     # 预编译 release APK
 ```
 

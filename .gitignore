@@ -3,10 +3,7 @@ keystore.properties
 *.jks
 *.keystore
 
-# 明文凭据配置文件 —— 禁止提交
-ref-phone/18
-ref-phone/21
-
+# 参考材料与私有构建输入一律不入库（明文凭据、上游源码、私有 keystore 等）
 # 构建产物
 .gradle/
 build/
