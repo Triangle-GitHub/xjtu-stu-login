@@ -1,105 +1,131 @@
-# xjtu-stu-login
+# XJTU-STU Auto Login · 校园网保活
 
-西安交大校园网（深澜 Srun）自动登录 **Android App**，协议自研（Kotlin），**不依赖第三方 bitsrun / BitSrunLoginGo**。
+西安交大校园网 **XJTU-STU**（深澜 Srun）自动登录 / 保活 Android App。
+协议引擎自研（纯 Kotlin、零 Android 依赖、可离线单测），**不依赖任何第三方二进制**。
 
-## 当前状态（2026-09-27；2026-10-11 迁移更新）
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-- ✅ **M0 引擎**：`engine/` Kotlin 协议引擎（XEncode + Challenge 登录 + 状态查询），
-  JVM 单测全绿：12 条 XEncode golden 向量与 BitSrunLoginGo 蓝本逐字节对齐 + mock 网关全流程。
-- ✅ **M1 App 壳**：`app/` Material 3 原生 App，构建产物 `xjtu-stu-login-v0.1.0.apk`。
-- ⏳ **M2 真机联调**：待装到手机实测（登录一次确认 `login_ok`，再开自动保活）。
-- ✅ **v0.3.0（2026-10-12）**：面向西交-STU 同学定默认值（SSID 默认 `XJTU_STU`、宿舍 SSID 可留空、账号后缀默认 `@stu`）、SSID 宽松匹配（忽略大小写/`-`≡`_`）、日志与通知**学号脱敏**、标题栏改 `XJTU-STU Auto Login`。
-- ✅ **v0.2.1（2026-10-12）**：账号后缀 `@stu` 提示补全（网关 `login_error` 多为缺后缀）；**VPN（VPN 覆盖网）下绕过隧道**——把登录请求 socket 绑定到 WiFi 网卡（`Network.openConnection`），不再因 VPN 抢占默认路由而误判「不是 WiFi」或拿错源 IP。
-- ✅ **v0.2.0（前一版）（2026-10-12）**：修复「无法保活」根因（系统默认拦明文 HTTP ⇒ 网关 `http://10.6.18.2` 被 `CLEARTEXT` 拒绝，已放行）+ 保活健壮性加固 + UI 重做到 Shizuku 水准。
-- ✅ **仓库迁移 + 构建入口自治**（2026-10-11）：仓库落在 `.`；gradle wrapper 入库（钉 `9.6.1`）⇒ `./gradlew` 自洽；重建 APK 与交付件 sha256 一致（`a63e1ad0…`）。
+## 它解决什么
 
-## 功能（全参数可配）
+手机连上 `XJTU_STU` 后总要手动开浏览器点认证，掉线还得再来一次。这个 App 常驻后台替你做：
+**连上就登录，掉线就重连**。
 
-- **网关列表**：任意数量，逐条勾选启用；每条可配 domain / acid（默认 `10.6.18.2` + `10.6.21.2` 主备示例）
-- **账号列表**：任意数量，逐条勾选启用；学号 + 密码（可加运营商后缀）
-- **参数**：轮询间隔、请求超时、目标校园网 SSID 列表（逗号分隔，留空=任意）、
-  宿舍网 SSID 列表（检测到则跳过，不占校园网账号）、os/name 提交参数、开机自启
-- **保活形态**：前台服务 + 常驻通知（常驻通知带「立即检测/停止」动作）；宿舍网优先语义源自 keep_srun v2.6；
-  网络变化立即重检、电池优化白名单入口、进程被回收后回前台自动自愈
-- **凭据**：EncryptedSharedPreferences（Keystore），无明文落盘
+## 特性
 
-## 构建（build-host）
+- **默认值已按 XJTU-STU 预设**：目标 SSID `XJTU_STU`（忽略大小写、`-` 与 `_` 等价）、账号后缀默认 `@stu`、
+  内置校园网 4 个 srun 认证端点 —— 开箱只需填学号 + 密码
+- **保活链路完整**：前台服务 + 常驻通知（带「立即检测 / 停止」按钮）、`START_STICKY`、
+  网络变化即刻重检、单轮检测持 WakeLock、进程被清理后回前台自动恢复、开机自启
+- **开着 VPN 也能用**：检测到 VPN（覆盖网）时，把登录请求的 socket **绑定到 WiFi 网卡**直出、不穿隧道；
+  机型不允许绑卡时自动降级（进程绑 WiFi → 默认路由），并把实际策略显示在状态里
+- **认证 IP 取网关上报值**（见「协议要点」）—— 同类实现最常踩的坑
+- **隐私优先**：凭据仅本机 Keystore 加密存储；无遥测、无上报、无第三方 SDK；日志与通知里学号自动脱敏（`前4位****后2位@stu`）
+- **Material 3 界面**（亮/暗）、首启三步引导、简化模式（网关/SSID/轮询等高级项默认收起）
+
+## 下载与安装
+
+- 最新版本：[`dist/xjtu-stu-login-v1.0.3-release.apk`](dist/xjtu-stu-login-v1.0.3-release.apk)（约 2.3 MB，release 签名）
+- 要求 Android 8.0+（minSdk 26）；安装时需允许「安装未知来源应用」
+- 升级：同一签名可直接覆盖安装，账号配置保留
+
+四步上手：
+
+1. 打开 App，授予**通知**与**定位**权限（定位权限是 Android 读取 WiFi 名称的硬性要求，见「隐私」）
+2. 「参数设置」填学号 + 密码（后缀已默认 `stu`）→ 保存
+3. 主界面点「启动保活」；顺手点「后台保活白名单」授权（否则系统省电会掐掉前台服务）
+4. 连上 `XJTU_STU`，状态卡变绿「已在线」即成功
+
+> 主界面顶部的三步引导卡片会随进度打勾，全绿或手动关闭后隐藏。
+
+## 常见问题
+
+**Q：一直 `login_error`？**
+① 账号后缀（西交校园网为 `stu`，App 已默认带成 `学号@stu`）；② 密码错误；③ 该区域由另一台 AC 服务 ——
+App 内置了 XJTU 全部 4 个 srun 端点并自动兜底尝试。网关错误码会翻译成人话写进日志（`E2531` 欠费、`E2553` 已在别处在线等）。
+
+**Q：某些区域（如食堂）失败，手动登录的页面也长得不一样？**
+那是**认证 IP** 的问题，不是 AC 选错 —— 详见「协议要点」第 2 条。
+
+**Q：显示「未连接 WiFi」或读不到 SSID？**
+Android 10+ 把读取 SSID 归入定位权限。拒绝授权时 App 会按「未知网络」继续尝试登录（此时无法识别宿舍网）。
+
+**Q：开着 VPN 会不会失效？**
+不会。检测到 VPN 时把请求 socket 绑到 WiFi 网卡（`Network.openConnection`）直连网关；若机型禁止绑卡
+（部分华为 ROM 返回 `EPERM`），自动降级为「进程绑 WiFi」→「默认路由」，状态里会写明当前策略（`VPN:已绕过(绑网卡)` 等）。
+
+**Q：会不会被系统杀掉？**
+前台服务 + 常驻通知 + 电池优化白名单 + 开机自启四件套。华为/小米等 ROM 还需在系统「应用启动管理」里允许自启动与后台运行。
+
+**Q：宿舍网怎么办？**
+宿舍网 SSID 可留空（留空 = 不跳过任何网络）；若填了，检测到该 SSID 就跳过登录，不占用校园网账号。
+
+## 协议要点（给实现者）
+
+1. **登录流程**：`GET /cgi-bin/get_challenge?username=&ip=` 取 `challenge` →
+   `info = "{SRBX1}" + B64(XEncode(infoJson))`、`password = "{MD5}" + hmac-md5(challenge, password)`、
+   `chksum = sha1(...)`（**末尾带换行**，与 Go 版 `%x\n` 对齐）→ `GET /cgi-bin/srun_portal?action=login&...`；
+   在线状态查询 `/cgi-bin/rad_user_info`。
+2. **认证 IP 必须用网关在响应里报的 `client_ip`**，而不是本机网卡读到的 IP。两者多数时候相同，
+   但在部分区域（实测食堂）不一致 —— 用本机 IP 会直接被判 `login_error`。
+   本项目与 BitSrunLoginGo 一致：优先取响应里的 `client_ip`，缺失才退回本机 IP，且**差异会写进日志**。
+3. **XJTU 的 srun 端点是有限集合**（实测：`10.6.8.2` 总门户 + `10.6.18.2` / `10.6.21.2` / `10.6.27.2` 各区域 AC），
+   不同区域由不同 AC 服务 ⇒ 本项目内置并自动兜底，同时记住上次成功的那个。
+4. **明文 HTTP**：校园网关只提供 `http://`，Android 9+ 默认拦截明文 ⇒ 必须用 `network_security_config` 放行
+   （本项目已含 —— 这也是「装了却完全无法登录」的经典原因）。
+
+## 构建
 
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64   # 默认 java 已是 25；Gradle 9.x/AGP 8.7.3 不支持 ⇒ 必须显式指定
-export ANDROID_HOME=/opt/android-sdk
-./gradlew :engine:test         # 协议引擎单测（离线 golden + mock 网关）
-./gradlew :app:assembleDebug   # 打 APK
-# 产物：app/build/outputs/apk/debug/app-debug.apk
+export JAVA_HOME=/path/to/jdk21      # AGP 8.7 / Gradle 9 不支持 JDK 25
+export ANDROID_HOME=/path/to/android-sdk
+
+./gradlew :engine:test          # 协议引擎离线单测（XEncode golden 向量 + mock 网关）
+./gradlew :app:assembleDebug    # debug 包
+./gradlew :app:assembleRelease  # release 包（R8 + 资源压缩；需 keystore.properties）
 ```
 
-> Gradle 由仓库内 wrapper 自带（钉 `9.6.1`，本机 wrapper 缓存已解包 ⇒ 离线可用）。已实测
-> `:engine:test` + `:app:assembleDebug` 通过，APK 与交付件 `xjtu-stu-login-v0.1.0.apk` 逐字节一致；
-> 若将来遇到 AGP/Kotlin 与 9.x 的兼容问题，可把 `gradle-wrapper.properties` 退回 `gradle-8.9-bin.zip`（本机亦已缓存）。
-> 2026-10-11 起仓库位于 `.`（原 `~/xjtu-stu-login`，已删）；
-> 原全局 Gradle `全局 Gradle` 已被清理，不要再引用。
+release 签名从仓库根 `keystore.properties` 读取（**该文件与私钥都不入库**）：
+
+```properties
+storeFile=/absolute/path/to/your-release.jks
+storePassword=***
+keyAlias=***
+keyPassword=***     # PKCS12 keystore 要求与 storePassword 相同
+```
+
+> 私钥务必备份：丢失后无法再对已发布的 App 做覆盖升级（签名不一致，用户必须卸载重装）。
+> 未提供 `keystore.properties` 时 release 产物不签名（可构建，不可分发）。
+
+## 隐私
+
+- **无遥测、无上报、无第三方 SDK**：不收集任何使用数据；除校园网网关外不连接任何地址。
+- **凭据仅存本机**：学号与密码写入 `EncryptedSharedPreferences`（Android Keystore / AES256），不上传、不导出，卸载即消失。
+- **定位权限**：仅用于读取当前 WiFi 名称以判断是否在 `XJTU_STU`，不采集位置。
+- **日志脱敏**：界面与通知里学号显示为 `前4位****后2位@stu`（方便你直接把日志贴出来求助）。
 
 ## 目录
 
 ```
-engine/    # Kotlin 协议引擎（纯 JVM，零 Android 依赖，可离线单测）
-app/       # Android App 壳（MD3 UI + 前台服务 + 原生 WiFi + 安全存储）
-tools/     # 构建工具：vector-gen（Go 生成 golden 向量；需 PATH=/usr/local/go/bin:$PATH）
-docs/      # DESIGN.md（设计文档）
-gradle/    # Gradle wrapper（钉 9.6.1）；gradlew 是唯一构建入口，不依赖全局 gradle
+engine/   # Kotlin 协议引擎（纯 JVM，零 Android 依赖，可离线单测）
+app/      # Android App（MD3 UI + 前台服务 + 原生 WiFi + Keystore 存储）
+tools/    # vector-gen：Go 生成 XEncode golden 向量（与上游 Go 实现逐字节对齐）
+docs/     # DESIGN.md 等设计与取证记录
+dist/     # 预编译 release APK
 ```
-
-## ⚠️ 凭据
-
-手机 Termux 取回的参考材料（`ref-phone/`、`ref-src/`：bitsrun 二进制、明文账号密码配置、keep_srun 脚本、
-上游 BitSrunLoginGo 源码）**已移出本仓库**，现存放于 `（仓库外参考目录）/`，
-不随本仓库分发（其中含明文口令与宿舍 WiFi 口令）。仓库内任何位置都不得出现真实账号/口令。
-
-## 真机联调（M2，用户执行）
-
-APK 已装（未打开）：包 `org.xjtulogin.app`，华为 ALN-AL00 / Android 12。（2026-10-11 复核：`ssh phone` = 192.168.5.x:8022 不通——手机不在同网段，装机状态本次未复核）
-
-1. 打开 App → 授予通知 / 附近设备权限（首次启动弹窗）。
-2. 设置 → 填学号密码（可多条，勾选启用）、确认网关勾选（默认 10.6.18.2 / 10.6.21.2 主备）→ 保存。
-3. 确保手机已连校园网 WiFi（默认目标 SSID `XJTU_STU`；设置里可改/留空=任意）。
-4. 回主页点「立即检测」：预期状态变 **已在线 · 登录成功 ✓**。
-5. 点「启动保活」进入前台轮询（默认 60s）；宿舍 SSID 填了的话，连宿舍网时自动跳过。
-
-**如果失败**：记下状态页显示的网关错误（如 `拒绝: E2531: ...`）或超时现象；`rad_user_info` 与错误透传已在 mock 中覆盖，联调结果按错误码可快速定位。
-
-## 构建 release（1.0 起）
-
-```bash
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-export ANDROID_HOME=/opt/android-sdk
-./gradlew :engine:test :app:assembleRelease     # 产物：app/build/outputs/apk/release/app-release.apk
-```
-
-- release 走 **R8（minify + shrinkResources）**，签名从仓库根 `keystore.properties` 读取（**不入库**，模板见下）；
-  文件缺失时 release 产物不签名（可直接构建，但不可分发）。
-- 私钥：`~/keys/xjtu-stu-login-release.jks`（RSA 4096 / 30 年）—— **务必备份**，
-  丢了就无法再对已发布的 App 做覆盖升级（签名不一致，必须卸载重装）。
-
-```properties
-# keystore.properties（仓库根，gitignore 已排除）
-storeFile=~/keys/xjtu-stu-login-release.jks
-storePassword=***
-keyAlias=xjtulogin
-keyPassword=***
-```
-
-## 隐私
-
-- **无遥测、无上报、无第三方 SDK**：不收集任何使用数据，不打点，不联网除校园网网关外的任何地址。
-- **凭据仅存本机**：学号与密码写入 `EncryptedSharedPreferences`（Android Keystore / AES256），
-  不上传、不导出；卸载即消失。App 内可清账号。
-- **为什么需要定位权限**：Android 从 10 起把「读取 WiFi 名称（SSID）」归类为定位权限，
-  而判断「是否在 XJTU_STU」必须读 SSID。本 App 只用它做 SSID 匹配，不采集位置、不做定位。
-  拒绝授权也能用：此时无法判断 SSID，会按「未知网络」继续尝试登录（宿舍网则不会被自动跳过）。
-- **日志已脱敏**：界面与通知里的学号显示为 `前4位****后2位@stu`（同学常把运行日志贴到群里求助）。
-  复制出来的日志同样是脱敏的。
 
 ## 后续待办
 
-- [ ] **运营商后缀改为下拉选择**（`stu` 预选、可留空）—— 现在仍是手输，一次输错就会得到网关 `login_error`（v0.1 实测踩过）。
-- [ ] **QS 磁贴 / 桌面小组件**：一键「立即检测 / 开关保活」，宿舍切回校园网后不必开 App。
+- [ ] **运营商后缀改为下拉选择**（`stu` 预选、可留空）—— 目前仍为手输，输错会得到网关 `login_error`。
+- [ ] **QS 磁贴 / 桌面小组件**：一键「立即检测 / 开关保活」，从宿舍切回校园网后不必开 App。
+
+## 免责声明
+
+仅供**你自己账号**的自动登录使用。请遵守学校网络使用规定；本项目不提供任何绕过认证、账号共享或攻击性能力。
+
+## 许可与致谢
+
+- 本项目以 **AGPL-3.0** 发布（见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)）。
+- 协议引擎中的 `XEncode` / `XBase64` 与登录参数组装是对
+  [BitSrunLoginGo](https://github.com/Mmx233/BitSrunLoginGo)（AGPL-3.0）的 Kotlin 移植与重写，属衍生作品；
+  算法源头参考 [BIT-srun-login-script](https://github.com/coffeehat/BIT-srun-login-script)。
+- UI 依赖 AndroidX / Material Components（Apache-2.0）。

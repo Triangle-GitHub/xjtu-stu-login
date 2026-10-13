@@ -28,24 +28,24 @@
 - **设计定稿 v0.2**：仅 Android 原生 App（脱离 Termux），Kotlin 引擎（纯 JVM）+ Android 壳；协议仅一条路径（XEncode Challenge 登录）；离线验证策略。`docs/DESIGN.md`
 - **M0 协议引擎**（`engine/`）：XEncode/XBase64/SrunCrypto/SrunClient/MiniJson；**8 项 JVM 单测全绿**（12 条 golden 向量逐字节对齐 + chksum 全链路 + mock 网关 5 场景；原文写作「9 项」，2026-10-11 核实校正）。
 - **M1 App 壳**（`app/`）：MD3 设置页（网关/账号动态增删勾选 + 全参数）+ 状态页 + 前台服务 + 原生 WiFi + EncryptedSharedPreferences + 开机自启；`assembleDebug` 出 `xjtu-stu-login-v0.1.0.apk`（6.6 MB）。
-- **交付**：APK 已 ssh phone → Termux adb 静默安装至真机（HUAWEI ALN-AL00 / Android 12），未启动。
+- **交付**：APK 已 ssh 真机(adb over ssh) → Termux adb 静默安装至真机（HUAWEI ALN-AL00 / Android 12），未启动。
 - **上游回报**：发现 BitSrunLoginGo 两个 bug（XEncode pad 循环 off-by-one 潜在 panic；XDecode 不可逆），提交 https://github.com/Mmx233/BitSrunLoginGo/issues/64（⚠️ 2026-10-12 更正：该 issue 正文实含真实口令示例，属已公开信息，口令须轮换——见 2026-10-12 条目）。
-- **环境**：build-host 构建链就绪（JDK 21 / Gradle 8.13 / /opt/android-sdk；Go 1.24.5 仅用于 golden 生成器）。（2026-10-11 更新：构建改走仓库内 wrapper `9.6.1`；Go 在 `/usr/local/go/bin`，**不在默认 PATH**）
+- **环境**：构建机 构建链就绪（JDK 21 / Gradle 8.13 / /opt/android-sdk；Go 1.24.5 仅用于 golden 生成器）。（2026-10-11 更新：构建改走仓库内 wrapper `9.6.1`；Go 在 `/usr/local/go/bin`，**不在默认 PATH**）
 - ⏳ 待办：M2 真机联调（用户实测）结果回填；WiFi 自动连接、双账号、release 签名为后续可选增强。
 
 ## 2026-10-11 —— 仓库迁移到 NAS + 构建入口自治（无功能变更）
 
-- **迁移**：`~/xjtu-stu-login` → `.`（rsync 校验差异 0，git 对象完好，源目录已删）。
-- **构建入口**：入库 gradle wrapper（钉 Gradle 9.6.1，本机 wrapper 缓存已有 ⇒ 无需联网）。原全局 `全局 Gradle` 已被同日清理删掉，README/DESIGN 里的绝对路径命令随之作废。
+- **迁移**：`~/xjtu-stu-login` → `（仓库根）`（rsync 校验差异 0，git 对象完好，源目录已删）。
+- **构建入口**：入库 gradle wrapper（钉 Gradle 9.6.1，本机 wrapper 缓存已有 ⇒ 无需联网）。原全局 `旧版全局 Gradle` 已被同日清理删掉，README/DESIGN 里的绝对路径命令随之作废。
 - **回归验证**：`./gradlew :engine:test :app:assembleDebug` 通过（engine 8 测全绿），产物 `app-debug.apk` 与交付件 `xjtu-stu-login-v0.1.0.apk` sha256 一致（Gradle 8.9 与 9.6.1 两条路径均复现）。
 - **去硬编码**：`tools/vector-gen/main.go` 不再写死 `~/xjtu-stu-login/...`，改 `-out` 参数（默认 `engine/src/test/resources/golden.json`，相对当前目录）；重跑生成器输出与既有 golden.json 逐字节一致（12 向量）。
 - ⏳ 待办不变：M2 真机联调（用户实测）结果回填。
 - **文档事实校正**：M0 单测数 9 → **8**（`XEncodeGoldenTest` 3 + `SrunClientMockTest` 5）；DESIGN §7 构建环境重写（必须显式 JDK 21、默认 java 25 不可用、wrapper 免下载、aliyun 镜像 + 代理 7893 兜底、`gradle :engine:test` → `./gradlew`）；补 Go 的 PATH 与 `-out` 用法；README 目录补 `gradle/`。
-- **未能复核**：真机装机状态（`ssh phone` 不通，手机不在同网段）——M2 前提不变，但本次未再确认；APK 字节数与 sha256 已核对（6580814 B / `a63e1ad0…`）。
+- **未能复核**：真机装机状态（`ssh 真机(adb over ssh)` 不通，手机不在同网段）——M2 前提不变，但本次未再确认；APK 字节数与 sha256 已核对（6580814 B / `a63e1ad0…`）。
 
-## 2026-10-12（二）—— v0.2.1：VPN（VPN 覆盖网）下绕过隧道直连网关
+## 2026-10-12（二）—— v0.2.1：VPN（覆盖网 VPN 覆盖网）下绕过隧道直连网关
 
-> 起因：真机实测 v0.2.0 —— 第一个错误是账号没填 `@stu` 后缀（配置问题，已解：设置页字段提示改为「西交校园网填 stu」、新增账号默认带 `stu`、网关返回 `login_error` 时日志直接给人话提示）；第二个错误是**手机开着 VPN 覆盖网时登录必失败**。
+> 起因：真机实测 v0.2.0 —— 第一个错误是账号没填 `@stu` 后缀（配置问题，已解：设置页字段提示改为「西交校园网填 stu」、新增账号默认带 `stu`、网关返回 `login_error` 时日志直接给人话提示）；第二个错误是**手机开着 覆盖网 VPN 覆盖网时登录必失败**。
 
 - **根因**：VPN 抢占默认路由后（1）`ConnectivityManager.activeNetwork` 变成 VPN 隧道 ⇒ 旧逻辑判定「不是 WiFi」直接跳过、永不登录；（2）拿到的 IPv4 是隧道地址（172.31.x.x），网关根本不认；（3）即便发出去也是穿隧道，网关看到的源 IP 不对。
 - **修法**：给协议引擎开一个 `ConnectionFactory` 注入口（纯 JDK `fun interface`，引擎仍零 Android 依赖），App 侧用 `Network.openConnection(url)` 把请求 socket **绑定到 TRANSPORT_WIFI 那张网卡** ⇒ 报文从 WiFi 直出、不穿隧道，源 IP 与网关看到的一致。绑定失败自动退回默认路由（不硬失败），并在状态里标 `绑定WiFi失败`。
@@ -61,10 +61,10 @@
 - **只在 VPN 活着时才尝试绑**（没 VPN 时默认路由本来就是 WiFi，绑了没收益只有风险）。
 - **三级降级（每级真被拒才降）**：① `Network.openConnection` 绑 socket → ② `ConnectivityManager.bindProcessToNetwork(WiFi)` 进程绑（netd 另一条路径，不受 socket 级 EPERM 限制）→ ③ 默认路由；成功那级记入 `vpnStrategy`，状态显示 `VPN:已绕过(绑网卡)/已绕过(进程绑WiFi)/走默认路由`。
 - **判定用「网关是否真的应答」（`Attempt.answered`）**，而不是只看异常类型 —— 这样任何一级路由不通都会自动降级。
-- **可执行的提示**：VPN 下若超时/连接失败，日志直接给出「在 VPN 里把校园网段 10.6.0.0/16、10.172.0.0/16 设为直连，或临时关掉 VPN」。
+- **可执行的提示**：VPN 下若超时/连接失败，日志直接给出「在 覆盖网 VPN 里把校园网段 10.6.0.0/16、10.172.0.0/16 设为直连，或临时关掉 VPN」。
 - 重构：循环体里那坨 try/catch 抽成 `attemptLogin(acc, gw, cfg, net, mode, sb)` + `Attempt`（online/ip/rejected/error/warn/bindRejected/answered），主循环只剩策略调度。
 - versionCode 4 / versionName 0.2.2。**交付**：`dist/xjtu-stu-login-v0.2.2.apk`（sha256 `c39ba8a118cd9ed93713c42e1b109a229b648d0b05a85f1d8f9552f8cac893ae`），已装机（未启动）。
-- ⏳ 待真机复核：开着 VPN 时状态里 `VPN:` 后面到底是哪一级；若停在「走默认路由」且仍失败 ⇒ VPN 在抢路由，需放行校园网段。
+- ⏳ 待真机复核：开着 覆盖网 VPN 时状态里 `VPN:` 后面到底是哪一级；若停在「走默认路由」且仍失败 ⇒ 覆盖网 VPN 在抢路由，需放行校园网段。
 
 ## 2026-10-12（四）—— v0.3.0：面向「西交-STU 同学」的默认值 + 标题栏改名 + 学号脱敏
 
@@ -98,7 +98,7 @@
   已装机真机（签名由 debug 换 release ⇒ 需卸载重装，**手机上的账号配置已清空，需重新填写**）。
 - **已推送**：`<自建 Gitea>` master + tag `v1.0.0`；历史经 `git filter-repo` 重写（`ref-phone/`、`ref-src/`
   与真实学号/口令已从全部历史中清除，校验：ref 目录 0、旧口令 0、真实学号 0），旧历史备份为
-  `../xjtu-stu-login-history-backup-20261012.bundle`（**含旧凭据，仅本地保留，勿分发**）。
+  `<历史备份 bundle>`（**含旧凭据，仅本地保留，勿分发**）。
 
 ## 2026-10-12（六）—— v1.0.1：食堂等区域登录失败（补全 AC 端点 + 记忆上次成功网关）
 
@@ -123,3 +123,12 @@
 - **修法（v1.0.2）**：`attemptLogin()` 改为 `authIp = 网关上报的 client_ip ?: 本机 IP`，并用它做 `get_challenge`/`srun_portal` 的 `ip`；两者不一致时在日志里显式打出 `(认证IP=x ≠ 本机 y)`，以后一眼可辨。
 - **v1.0.1 的更正**：补全 4 个 srun 端点仍然保留（无害兜底、且对真·跨区域有帮助），但**它不是食堂问题的钥匙**；当时的「AC 选错」判断是把「认证 IP 不匹配」误读成了「网关不匹配」。唯一还能证明 AC 名单价值的场景是：某区域的 AC 完全不在那 4 个里（本机扫描所见范围内不存在）。
 - versionCode 8 / versionName 1.0.2。**交付**：`dist/xjtu-stu-login-v1.0.2-release.apk`（sha256 `ef1d359d98ed75cf33b56bf86b329063952f61b960e7ce6abb98513760ec3eb6`），已装机（release→release 覆盖，配置保留）。
+
+## 2026-10-12（八）—— v1.0.3：面向公开发布整理
+
+- **仓库对外整理**：README 重写为对外版本（简介 / 特性 / 下载安装 / FAQ / 协议要点 / 构建 / 隐私 / 免责 / 许可）；
+  CHANGELOG 与 DESIGN 中的内网痕迹（主机名、内网 IP、个人绝对路径、自建服务地址、覆盖网品牌）全部泛化；
+  `dist/` 只保留最新 release APK（旧版含跨区域缺陷，不再随仓库分发）。
+- **文案泛化**：VPN 相关提示不再点名具体产品（面向任意 VPN 客户端）；代码注释同步。
+- **认证 IP 修正的延续**：沿用 v1.0.2 的 `client_ip` 取值逻辑（食堂 login_error 的真因）。
+- versionCode 9 / versionName 1.0.3。

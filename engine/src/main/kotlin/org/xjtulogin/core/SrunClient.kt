@@ -121,7 +121,7 @@ fun goQueryEscape(s: String): String {
  * 连接工厂：把「怎么建 socket」交给调用方。
  *
  * Android 侧的用途：把请求绑定到指定 Network（`Network.openConnection(url)`）——
- * VPN（如 VPN 覆盖网）会抢走默认路由，绑到 WiFi 网卡后到校园网关的报文依旧直出、不穿隧道，
+ * VPN（含校园里常见的覆盖网）会抢走默认路由，绑到 WiFi 网卡后到校园网关的报文依旧直出、不穿隧道，
  * 且源 IP 与网关看到的 WiFi IP 一致。引擎保持零 Android 依赖，这里只用 JDK 类型。
  */
 fun interface ConnectionFactory {

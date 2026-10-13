@@ -17,7 +17,7 @@ data class NetInfo(
     /** 当前 SSID；null = 无 WiFi 或读不到（缺定位权限时会被系统打码） */
     val ssid: String?,
     val ipv4: String?,
-    /** VPN（VPN 等）正在占用默认网络 */
+    /** VPN（覆盖网等）正在占用默认网络 */
     val vpnActive: Boolean = false,
     /** 明确的 WiFi 网络对象：交给 SrunClient 绑 socket，绕开 VPN 抢占的路由 */
     val wifiNetwork: Network? = null,
@@ -29,7 +29,7 @@ object WifiKit {
 
     /**
      * VPN 存活时 `activeNetwork` 是 VPN 隧道（TRANSPORT_VPN），
-     * 所以不能只看 activeNetwork —— 否则开了 VPN 就会误判「不是 WiFi」而永远不登录，
+     * 所以不能只看 activeNetwork —— 否则开着 VPN 就会误判「不是 WiFi」而永远不登录，
      * 而且拿到的 IPv4 会是隧道地址（172.31.x.x），网关根本认不出。
      * 这里显式挑出 TRANSPORT_WIFI 那张网卡：SSID / IP / socket 绑定都用它。
      */

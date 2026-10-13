@@ -379,7 +379,7 @@ class LoginService : Service() {
                     when (vpnStrategy) {
                         BindMode.SOCKET -> "已绕过(绑网卡)"
                         BindMode.PROCESS -> "已绕过(进程绑WiFi)"
-                        else -> "走默认路由（若失败请在 VPN 放行校园网段）"
+                        else -> "走默认路由（若失败请在 VPN 客户端放行校园网段）"
                     }
                 )
             }
@@ -476,7 +476,7 @@ class LoginService : Service() {
                 val msg = friendlyError(t)
                 sb.append("失败: $msg\n")
                 if (net.vpnActive && (t is java.net.SocketTimeoutException || t is java.net.ConnectException)) {
-                    sb.append("  · VPN 可能在抢路由：在 VPN 里把校园网段（10.6.0.0/16、10.172.0.0/16）设为直连，或临时关掉 VPN\n")
+                    sb.append("  · VPN 可能在抢路由：请在 VPN 客户端把校园网段（10.6.0.0/16、10.172.0.0/16）设为直连，或临时关闭 VPN\n")
                 }
                 Attempt(
                     error = msg,

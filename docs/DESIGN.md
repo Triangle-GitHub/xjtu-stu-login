@@ -73,7 +73,7 @@ BitSrunLoginGo 功能全景中，App 只移植 `pkg/srun` 子集：
 
 ### 2.1 引擎与壳的边界
 
-- `engine` 不 import 任何 `android.*` → 用 `kotlinc` 编译成普通 JAR 即可在 build-host 跑 `XEncodeGoldenTest`
+- `engine` 不 import 任何 `android.*` → 用 `kotlinc` 编译成普通 JAR 即可在 构建机 跑 `XEncodeGoldenTest`
 - `app` 依赖 `engine`，只做：调用引擎 + 调度 + WiFi + UI + 存储
 - 好处：**协议正确性在写 UI 之前就已离线锁定**
 
@@ -130,7 +130,7 @@ BitSrunLoginGo 功能全景中，App 只移植 `pkg/srun` 子集：
 | App 壳 | 本机构建 APK + `assembleDebug` 通过；模拟器/仪器测试可选 | M1 |
 | 真机联调 | 用户手机上装 APK，手动触发一次登录，看 `login_ok`；之后才授权自动续期 | **M2（最后）** |
 
-> 原则：**所有能在 build-host 离线验证的都离线验证**；真机只做最后一件事——确认"网关真的是这么应答的"。
+> 原则：**所有能在 构建机 离线验证的都离线验证**；真机只做最后一件事——确认"网关真的是这么应答的"。
 
 ---
 
@@ -146,10 +146,10 @@ M0 与 M1 可并行推进（引擎纯 JVM，不依赖壳）。
 
 ---
 
-## 7. 构建环境（build-host 可用性实测）
+## 7. 构建环境（构建机 可用性实测）
 
 - Java：构建必须显式 `export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`。系统默认 `java` 已是 25.0.4.1 —— Gradle 9.x/AGP 8.7.3 **不支持**，直接拿它跑必失败；17/21/25 均在 `/usr/lib/jvm/` 下。
-- Gradle：仓库内 wrapper 已入库（钉 `9.6.1`）。`GRADLE_USER_HOME` = `~/.gradle` → `本地 Gradle 缓存`（符号链接），其 `wrapper/dists` 已解包 9.6.1 与 8.9 ⇒ **首次运行也无需下载**；8.9 留作 AGP 8.7.3 的兼容退路（换 `distributionUrl` 即可）。全局 gradle 已不可用：原 `全局 Gradle` 于 2026-10-11 被系统清理。
+- Gradle：仓库内 wrapper 已入库（钉 `9.6.1`）。`GRADLE_USER_HOME` = `~/.gradle` → `本地 Gradle 缓存`（符号链接），其 `wrapper/dists` 已解包 9.6.1 与 8.9 ⇒ **首次运行也无需下载**；8.9 留作 AGP 8.7.3 的兼容退路（换 `distributionUrl` 即可）。全局 gradle 已不可用：原 `旧版全局 Gradle` 于 2026-10-11 被系统清理。
 - AGP/Kotlin 插件：Gradle 构建时解析（`~/.gradle/init.d/mirrors.gradle` 会自动前置 aliyun 镜像；本机代理 `http://127.0.0.1:7893` 仍在监听，可兜底）。
 - 目标 SDK：`compileSdk 34` + `minSdk 26`（Android 8.0，覆盖前台服务通知要求；WiFi API 按实际机型用 `WifiNetworkSpecifier` 适配分支）
 
@@ -188,9 +188,9 @@ M0 与 M1 可并行推进（引擎纯 JVM，不依赖壳）。
 - 前台服务 `LoginService`（specialUse FGS + 常驻通知文案即状态）；宿舍网优先语义继承 keep_srun v2.6；`rad_user_info` 判在线（§4.3）。
 - 凭据 EncryptedSharedPreferences（Keystore；异常回退普通 prefs —— 首版取舍）。
 - **已知边界（与设计差异）**：WiFi 自动连接未做（仅“当前 SSID 命中目标列表才保活”），避免系统弹框；如需自动切网，下一版用 WifiNetworkSpecifier + 引导。
-- 构建环境（build-host 实测）：JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64、ANDROID_HOME=/opt/android-sdk、Gradle 9.6.1（仓库内 wrapper，已验证 `:engine:test` + `:app:assembleDebug`；AGP 8.7.3 + Kotlin 2.0.21 在 9.x 下可用，仅报 Gradle 10 弃用警告；必要时可退回 wrapper 8.9）、compileSdk 34 / minSdk 26。
-- 仓库位置（2026-10-11 迁移）：`.`（原 `~/xjtu-stu-login`，源目录已删）；原全局 `全局 Gradle` 同时被系统清理 ⇒ 构建一律走仓库内 `./gradlew`。
-- 产物：`xjtu-stu-login-v0.1.0.apk`（6580814 B ≈ 6.6 MB，debug 签名）——已 ssh phone → Termux adb 静默安装至真机（HUAWEI ALN-AL00 / Android 12），**未启动**。（2026-10-11 复核：`ssh phone` = 192.168.5.x:8022 不通——手机不在同网段 ⇒ 本次未能复核装机状态）
+- 构建环境（构建机 实测）：JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64、ANDROID_HOME=/opt/android-sdk、Gradle 9.6.1（仓库内 wrapper，已验证 `:engine:test` + `:app:assembleDebug`；AGP 8.7.3 + Kotlin 2.0.21 在 9.x 下可用，仅报 Gradle 10 弃用警告；必要时可退回 wrapper 8.9）、compileSdk 34 / minSdk 26。
+- 仓库位置（2026-10-11 迁移）：`（仓库根）`（原 `~/xjtu-stu-login`，源目录已删）；原全局 `旧版全局 Gradle` 同时被系统清理 ⇒ 构建一律走仓库内 `./gradlew`。
+- 产物：`xjtu-stu-login-v0.1.0.apk`（6580814 B ≈ 6.6 MB，debug 签名）——已 ssh 真机(adb over ssh) → Termux adb 静默安装至真机（HUAWEI ALN-AL00 / Android 12），**未启动**。（2026-10-11 复核：`ssh 真机(adb over ssh)` = 192.168.5.x:8022 不通——手机不在同网段 ⇒ 本次未能复核装机状态）
 
 ### 9.4 待办（M2 之后）
 
