@@ -1,6 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package org.xjtulogin.core
 
-/** 极简 JSON 对象解析：仅顶层 { "key": scalar }（深澜响应形状），scalar = String/Long/Double/Boolean/null */
+/**
+ * 极简 JSON 解析（本项目原创）：只处理深澜响应那点形状 —— 顶层对象、标量、嵌套对象与数组，
+ * 不追求完整 JSON 规范（注：工程上足够，且有 mock 网关全链路测试兜底）。
+ */
 object MiniJson {
     class ParseException(msg: String) : Exception(msg)
 
@@ -130,117 +134,158 @@ fun interface ConnectionFactory {
     fun open(url: java.net.URL): java.net.HttpURLConnection
 }
 
-/** 深澜 Srun 客户端（纯 JDK，JVM / Android 通用） */
+/**
+ * 深澜 Srun 客户端（纯 JDK，JVM / Android 通用）。
+ *
+ * 端点、参数与算法见 docs/PROTOCOL.md；本实现按规范编写。
+ * 请求形如 `GET {path}?callback=jQuery{rand}_{ms}&{k=v}&_={ms}`，响应是 `callback({...})`。
+ */
 class SrunClient(
     val baseUrl: String = "http://10.6.18.2/",
     val timeoutMs: Int = 5000,
-    val userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    val userAgent: String = DEFAULT_UA,
     /** 可选：接管连接创建（Android 传入绑定到 WiFi 的工厂，以绕开 VPN 抢占的默认路由） */
     private val connectionFactory: ConnectionFactory? = null,
 ) {
+
+    companion object {
+        /** 与主流客户端保持一致的 UA（部分网关会看） */
+        const val DEFAULT_UA =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    }
+
+    /** 取挑战串（token） */
+    fun getChallenge(username: String, ip: String): String {
+        val res = request("cgi-bin/get_challenge", mapOf("username" to username, "ip" to ip))
+        return res["challenge"] as? String
+            ?: throw java.io.IOException("no challenge in response: $res")
+    }
+
+    /** 在线状态：`rad_user_info` 的 error == "ok" 且能拿到 client_ip/online_ip */
+    fun loginStatus(): Pair<Boolean, String?> {
+        val res = request("cgi-bin/rad_user_info", emptyMap())
+        val online = res["error"] as? String == "ok"
+        val ip = (res["client_ip"] as? String) ?: (res["online_ip"] as? String)
+        return online to ip
+    }
+
+    /**
+     * 完整登录。
+     *
+     * [clientIP] 必须是**网关认的地址**（`rad_user_info` 的 `client_ip`，见 PROTOCOL §5），
+     * 不是本机网卡地址 —— 两者在部分区域会不一致，用错即 `login_error`。
+     */
+    fun doLogin(form: LoginForm, meta: LoginMeta, clientIP: String): SrunResult {
+        val username = withSuffix(form)
+        val token = getChallenge(username, clientIP)
+        val md5Hex = SrunCrypto.hmacMd5Hex(token, form.password)
+        val info = SrunCrypto.encryptedInfo(form, meta, clientIP, token)
+        val chksum = SrunCrypto.chksum(
+            token, username, md5Hex, meta.acid, clientIP, meta.n, meta.type, info
+        )
+
+        val res = request(
+            "cgi-bin/srun_portal",
+            linkedMapOf(
+                "action" to "login",
+                "username" to username,
+                "password" to "{MD5}$md5Hex",
+                "ac_id" to meta.acid,
+                "ip" to clientIP,
+                "info" to info,
+                "chksum" to chksum,
+                "n" to meta.n,
+                "type" to meta.type,
+                "os" to meta.os,
+                "name" to meta.name,
+                "double_stack" to if (meta.doubleStack) "1" else "0",
+            ),
+        )
+        return interpret(res) { ip -> SrunResult.Ok(ip ?: clientIP) }
+    }
+
+    /** 登出（action=logout + 账号/域/ip） */
+    fun doLogout(form: LoginForm, meta: LoginMeta, clientIP: String): SrunResult {
+        val res = request(
+            "cgi-bin/srun_portal",
+            linkedMapOf(
+                "action" to "logout",
+                "username" to withSuffix(form),
+                "ac_id" to meta.acid,
+                "ip" to clientIP,
+            ),
+        )
+        return interpret(res) { SrunResult.Ok(null) }
+    }
+
+    /** 带后缀的账号：`学号@stu`（后缀为空则原样） */
+    private fun withSuffix(form: LoginForm): String =
+        if (form.userType.isEmpty()) form.username else "${form.username}@${form.userType}"
+
+    /** 统一解释 srun 响应：error == ok 即成功，否则透传网关错误串 */
+    private fun interpret(res: Map<String, Any?>, onOk: (String?) -> SrunResult): SrunResult {
+        val error = res["error"] as? String
+            ?: throw java.io.IOException("no error field in response: $res")
+        if (error != "ok") return SrunResult.Rejected(error, res.toString())
+        val ip = (res["client_ip"] as? String) ?: (res["online_ip"] as? String)
+        return onOk(ip)
+    }
+
+    /**
+     * 发一次 JSONP GET。
+     *
+     * @throws java.io.IOException HTTP 非 200 或响应不是 JSON 对象
+     */
+    fun request(path: String, query: Map<String, String>): Map<String, Any?> {
+        val url = buildUrl(path, query)
+        val conn = openConnection(url)
+        val body = try {
+            conn.requestMethod = "GET"
+            conn.connectTimeout = timeoutMs
+            conn.readTimeout = timeoutMs
+            conn.setRequestProperty("User-Agent", userAgent)
+            conn.setRequestProperty("Accept", "*/*")
+            val code = conn.responseCode
+            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() } ?: ""
+            if (code != 200) throw java.io.IOException("HTTP $code for $path: ${text.take(120)}")
+            text
+        } finally {
+            runCatching { conn.disconnect() }
+        }
+        return parseCallbackBody(body)
+    }
+
+    /** 拼 URL：callback + 业务参数 + 时间戳（网关要求 callback/_ 存在） */
+    private fun buildUrl(path: String, query: Map<String, String>): String {
+        val ms = System.currentTimeMillis()
+        val nonce = (1..21).joinToString("") { ((1..9).random()).toString() }
+        val sb = StringBuilder(base())
+        sb.append(path).append("?callback=jQuery").append(nonce).append('_').append(ms)
+        for ((key, value) in query) {
+            if (value.isEmpty()) continue
+            sb.append('&').append(key).append('=').append(goQueryEscape(value))
+        }
+        sb.append("&_=").append(ms)
+        return sb.toString()
+    }
+
     private fun base(): String = if (baseUrl.endsWith("/")) baseUrl else baseUrl + "/"
 
     private fun openConnection(url: String): java.net.HttpURLConnection {
-        val u = java.net.URL(url)
-        return connectionFactory?.open(u) ?: (u.openConnection() as java.net.HttpURLConnection)
+        val parsed = java.net.URL(url)
+        return connectionFactory?.open(parsed)
+            ?: (parsed.openConnection() as java.net.HttpURLConnection)
     }
 
-    /** GET {path}?{query}&callback=jQuery{21位}[1-9]_{ms}&_={ms}，返回 {} 剥壳后的 JSON 对象 */
-    fun request(path: String, query: Map<String, String>): Map<String, Any?> {
-        val rand = (1..21).joinToString("") { ((1..9).random()).toString() }
-        val ms = System.currentTimeMillis()
-        val sb = StringBuilder()
-        sb.append("callback=jQuery").append(rand).append('_').append(ms)
-        for ((k, v) in query) {
-            if (v.isEmpty()) continue
-            sb.append('&').append(k).append('=').append(goQueryEscape(v))
+    /** 剥掉 `callback(...)` 外壳（容错：不是 JSONP 就按纯 JSON 解析） */
+    private fun parseCallbackBody(body: String): Map<String, Any?> {
+        var text = body.trim()
+        if (text.startsWith("jQuery") || text.startsWith("jsonp")) {
+            val open = text.indexOf('(')
+            val close = text.lastIndexOf(')')
+            if (open >= 0 && close > open) text = text.substring(open + 1, close).trim()
         }
-        sb.append("&_=").append(ms)
-        val url = base() + path + "?" + sb
-        val conn = openConnection(url)
-        conn.requestMethod = "GET"
-        conn.connectTimeout = timeoutMs
-        conn.readTimeout = timeoutMs
-        conn.setRequestProperty("User-Agent", userAgent)
-        conn.setRequestProperty("Accept", "*/*")
-        val code = conn.responseCode
-        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
-            ?.bufferedReader()?.readText() ?: ""
-        conn.disconnect()
-        if (code != 200) throw java.io.IOException("HTTP $code for $path: ${body.take(120)}")
-        return parseCallbackBody(body, "jQuery")
-    }
-
-    /** 剥掉 callback(...) 外壳（容错：找不到括号就按纯 JSON 解析） */
-    private fun parseCallbackBody(body: String, prefix: String): Map<String, Any?> {
-        var t = body.trim()
-        if (t.startsWith(prefix) || t.startsWith("jQuery")) {
-            val open = t.indexOf('(')
-            val close = t.lastIndexOf(')')
-            if (open >= 0 && close > open) t = t.substring(open + 1, close).trim()
-        }
-        return MiniJson.parseObject(t)
-    }
-
-    /** GET get_challenge -> token */
-    fun getChallenge(username: String, ip: String): String {
-        val res = request("cgi-bin/get_challenge", mapOf("username" to username, "ip" to ip))
-        val token = res["challenge"] as? String ?: throw java.io.IOException("no challenge in response: $res")
-        return token
-    }
-
-    /** 在线状态：rad_user_info 的 error == "ok" 且拿到 client_ip/online_ip */
-    fun loginStatus(): Pair<Boolean, String?> {
-        val res = request("cgi-bin/rad_user_info", emptyMap())
-        val isOnline = res["error"] as? String == "ok"
-        val ip = (res["client_ip"] as? String) ?: (res["online_ip"] as? String)
-        return isOnline to ip
-    }
-
-    /** 完整登录（对应 BitSrunLoginGo DoLogin）；clientIP 由调用方传入（Android 从 WifiManager 取） */
-    fun doLogin(form: LoginForm, meta: LoginMeta, clientIP: String): SrunResult {
-        val username = if (form.userType.isNotEmpty()) "${form.username}@${form.userType}" else form.username
-
-        val token = getChallenge(username, clientIP)
-
-        val info = SrunCrypto.encryptedInfo(form, meta, clientIP, token)
-        val md5Hex = SrunCrypto.hmacMd5Hex(token, form.password)
-        val chksum = SrunCrypto.chksum(token, username, md5Hex, meta.acid, clientIP, meta.n, meta.type, info)
-
-        val query = linkedMapOf(
-            "action" to "login",
-            "username" to username,
-            "password" to "{MD5}$md5Hex",
-            "ac_id" to meta.acid,
-            "ip" to clientIP,
-            "info" to info,
-            "chksum" to chksum,
-            "n" to meta.n,
-            "type" to meta.type,
-            "os" to meta.os,
-            "name" to meta.name,
-            "double_stack" to (if (meta.doubleStack) "1" else "0"),
-        )
-        val res = request("cgi-bin/srun_portal", query)
-        val error = res["error"] as? String ?: throw java.io.IOException("no error field in login response: $res")
-        if (error == "ok") {
-            val ip = (res["client_ip"] as? String) ?: clientIP
-            return SrunResult.Ok(ip)
-        }
-        return SrunResult.Rejected(error, res.toString())
-    }
-
-    /** 登出（深澜标准：action=logout + 账号/域/ip；最小可用实现） */
-    fun doLogout(form: LoginForm, meta: LoginMeta, clientIP: String): SrunResult {
-        val username = if (form.userType.isNotEmpty()) "${form.username}@${form.userType}" else form.username
-        val query = linkedMapOf(
-            "action" to "logout",
-            "username" to username,
-            "ac_id" to meta.acid,
-            "ip" to clientIP,
-        )
-        val res = request("cgi-bin/srun_portal", query)
-        val error = res["error"] as? String ?: throw java.io.IOException("no error field in logout response: $res")
-        return if (error == "ok") SrunResult.Ok(null) else SrunResult.Rejected(error, res.toString())
+        return MiniJson.parseObject(text)
     }
 }

@@ -19,8 +19,8 @@ android {
         applicationId = "org.xjtulogin.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.0.3"
+        versionCode = 10
+        versionName = "1.1.0"
     }
 
     signingConfigs {

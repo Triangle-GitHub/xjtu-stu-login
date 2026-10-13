@@ -132,3 +132,22 @@
 - **文案泛化**：VPN 相关提示不再点名具体产品（面向任意 VPN 客户端）；代码注释同步。
 - **认证 IP 修正的延续**：沿用 v1.0.2 的 `client_ip` 取值逻辑（食堂 login_error 的真因）。
 - versionCode 9 / versionName 1.0.3。
+
+## 2026-10-13 —— v1.1.0：引擎独立重写 + 整仓改为 GPL-3.0
+
+- **背景**：v1.0.x 的 `engine/` 是对 BitSrunLoginGo（AGPL-3.0）的移植，NOTICE 亦如实声明为衍生作品
+  ⇒ 整仓受 AGPL 约束（网络条款对"服务端跑"的场景有传染性）。
+- **本轮**：`engine/` 三个文件按**公开协议规范**（新增 `docs/PROTOCOL.md`：端点、参数表、XEncode 规范、
+  变体 base64 字母表、chksum 拼接、认证 IP 规则、错误码）与 **MIT 许可的参考实现**（BIT-srun-login-script，
+  © 2020 coffeehat，全文归档在 `licenses/`）**独立重写**：
+  - **对外 API 完全冻结** ⇒ `app/` 与测试零改动；行为由现有 **10 条测试**（12 条逐字节 golden 向量 +
+    mock 网关全链路 7 例）验收；
+  - 顺手删掉仅为"逐行对齐上游"而存在的 `xDecode`（协议路径不使用，且上游实现本身不可逆）；
+  - 删除 AGPL 血缘的工具 `tools/vector-gen`（`golden.json` 转为冻结夹具）；
+  - `MiniJson`、`goQueryEscape` 为本项目原创，原样保留。
+- **许可**：整仓改为 **GPL-3.0**（LICENSE 换为 GPLv3 全文），NOTICE 重写为「MIT 参考实现 + 公开规范」，
+  MIT 全文归档 `licenses/MIT-BIT-srun-login-script.txt`。
+- **诚实声明**：重写者此前阅读过 AGPL 上游源码，因此本轮属于**换血统 + 重写表达**，
+  并非教科书式 clean-room（后者要求实现者从未接触上游代码）。若需要最强证据链，
+  建议由未接触过上游实现者照 `docs/PROTOCOL.md` 再实现一版（现有 10 条测试即验收标准）。
+- versionCode 10 / versionName 1.1.0。

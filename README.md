@@ -3,7 +3,7 @@
 西安交大校园网 **XJTU-STU**（深澜 Srun）自动登录 / 保活 Android App。
 协议引擎自研（纯 Kotlin、零 Android 依赖、可离线单测），**不依赖任何第三方二进制**。
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 ## 它解决什么
 
@@ -24,7 +24,7 @@
 
 ## 下载与安装
 
-- 最新版本：[`dist/xjtu-stu-login-v1.0.3-release.apk`](dist/xjtu-stu-login-v1.0.3-release.apk)（约 2.3 MB，release 签名）
+- 最新版本：[`dist/xjtu-stu-login-v1.1.0-release.apk`](dist/xjtu-stu-login-v1.1.0-release.apk)（约 2.3 MB，release 签名）
 - 要求 Android 8.0+（minSdk 26）；安装时需允许「安装未知来源应用」
 - 升级：同一签名可直接覆盖安装，账号配置保留
 
@@ -108,7 +108,6 @@ keyPassword=***     # PKCS12 keystore 要求与 storePassword 相同
 ```
 engine/   # Kotlin 协议引擎（纯 JVM，零 Android 依赖，可离线单测）
 app/      # Android App（MD3 UI + 前台服务 + 原生 WiFi + Keystore 存储）
-tools/    # vector-gen：Go 生成 XEncode golden 向量（与上游 Go 实现逐字节对齐）
 docs/     # DESIGN.md 等设计与取证记录
 dist/     # 预编译 release APK
 ```
@@ -124,8 +123,8 @@ dist/     # 预编译 release APK
 
 ## 许可与致谢
 
-- 本项目以 **AGPL-3.0** 发布（见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)）。
-- 协议引擎中的 `XEncode` / `XBase64` 与登录参数组装是对
-  [BitSrunLoginGo](https://github.com/Mmx233/BitSrunLoginGo)（AGPL-3.0）的 Kotlin 移植与重写，属衍生作品；
-  算法源头参考 [BIT-srun-login-script](https://github.com/coffeehat/BIT-srun-login-script)。
+- 本项目以 **GPL-3.0** 发布（见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)）。
+- 协议引擎（`engine/`）按**公开协议规范**（[docs/PROTOCOL.md](docs/PROTOCOL.md)）与 **MIT 许可的参考实现**
+  [BIT-srun-login-script](https://github.com/coffeehat/BIT-srun-login-script)（© 2020 coffeehat，
+  全文见 [licenses/](licenses/)）独立编写；同领域另有 BitSrunLoginGo 等实现，仅作协议理解之用。
 - UI 依赖 AndroidX / Material Components（Apache-2.0）。

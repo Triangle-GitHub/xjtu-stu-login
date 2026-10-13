@@ -1,18 +1,20 @@
 xjtu-stu-login — XJTU-STU Auto Login（Android 校园网自动登录）
 Copyright (C) 2026 Triangle-GitHub
 
-本程序按 GNU Affero General Public License v3.0（AGPL-3.0）发布，完整条款见 LICENSE。
+本程序按 GNU General Public License v3.0 发布，完整条款见 LICENSE。
 
-第三方来源与致谢
-────────────────
-1. BitSrunLoginGo — https://github.com/Mmx233/BitSrunLoginGo （AGPL-3.0）
-   本项目的深澜（Srun）协议引擎（XEncode / XBase64 / 登录与状态查询的参数组装）
-   是对该项目 pkg/srun 的 Kotlin 移植与重写，属 AGPL-3.0 下的衍生作品；
-   报文形态与提交参数以其为对照实现（详见 docs/DESIGN.md）。
-2. BIT-srun-login-script — https://github.com/coffeehat/BIT-srun-login-script
-   （XEncode 算法源头参考，经 BitSrunLoginGo 间接沿用）
-3. AndroidX / Material Components / androidx.security:security-crypto(Tink)
-   — Apache-2.0
+协议实现的来源说明
+──────────────────
+engine/ 模块（深澜 Srun 协议：XEncode、变体 base64、登录/查询参数组装与摘要）是按**公开协议规范**
+（见 docs/PROTOCOL.md）与 **MIT 许可的参考实现**独立编写的：
 
-本仓库不含任何上游二进制或上游源码副本；协议实现为独立 Kotlin 代码
-（engine/ 模块，零 Android 依赖，可离线单测：XEncode golden 向量 + mock 网关）。
+* BIT-srun-login-script — https://github.com/coffeehat/BIT-srun-login-script
+  Copyright (c) 2020 coffeehat，MIT License
+  全文见 licenses/MIT-BIT-srun-login-script.txt。
+  本项目的 XEncode / 变体 base64 / 三段摘要（password、info、chksum）以其算法与常量为参考实现。
+
+同领域另有 BitSrunLoginGo 等公开实现，本项目仅作协议理解之用，不包含其代码。
+
+其他依赖
+────────
+AndroidX、Material Components、androidx.security:security-crypto（Tink）—— 均为 Apache-2.0。
