@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -20,6 +21,7 @@ import androidx.annotation.ColorRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import org.xjtulogin.app.databinding.ActivityMainBinding
+import rikka.shizuku.Shizuku
 import org.xjtulogin.app.databinding.ItemNavBinding
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,6 +47,18 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh() }
 
+    /** Shizuku 授权结果：刷新界面（授权后「WiFi 自动修复」那一行会变） */
+    private val shizukuPermissionListener =
+        Shizuku.OnRequestPermissionResultListener { _, grantResult ->
+            val ok = grantResult == PackageManager.PERMISSION_GRANTED
+            Toast.makeText(
+                this,
+                if (ok) R.string.shizuku_granted else R.string.shizuku_denied,
+                Toast.LENGTH_SHORT
+            ).show()
+            refresh()
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityMainBinding.inflate(layoutInflater)
@@ -61,6 +75,7 @@ class MainActivity : AppCompatActivity() {
             LoginService.checkNow(this)
             Toast.makeText(this, R.string.toast_checking, Toast.LENGTH_SHORT).show()
         }
+        b.btnOneShot.setOnClickListener { oneShotLogin() }
 
         b.itemSettings.root.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -68,6 +83,9 @@ class MainActivity : AppCompatActivity() {
         b.itemSettings.navIcon.setImageResource(R.drawable.ic_settings)
         b.itemSettings.navTitle.setText(R.string.nav_settings_title)
         b.itemSettings.navSubtitle.setText(R.string.nav_settings_subtitle)
+
+        b.itemWifi.root.setOnClickListener { onWifiFixClicked() }
+        b.itemWifi.navIcon.setImageResource(R.drawable.ic_wifi)
 
         b.itemBattery.root.setOnClickListener { PowerKit.requestIgnoreBatteryOptimizations(this) }
         b.itemBattery.navIcon.setImageResource(R.drawable.ic_battery)
@@ -96,6 +114,7 @@ class MainActivity : AppCompatActivity() {
 
         b.footer.text = getString(R.string.footer_version, versionName())
 
+        ShizukuShell.addPermissionListener(shizukuPermissionListener)
         requestPermissions()
         autoRecover()
         applyLogState()
@@ -112,6 +131,11 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    override fun onDestroy() {
+        ShizukuShell.removePermissionListener(shizukuPermissionListener)
+        super.onDestroy()
+    }
+
     // ------------------------------------------------------------ 保活开关
 
     private fun startKeepAlive() {
@@ -121,6 +145,25 @@ class MainActivity : AppCompatActivity() {
         LoginService.start(this)
         Toast.makeText(this, R.string.toast_started, Toast.LENGTH_SHORT).show()
         handler.postDelayed({ refresh() }, 400L)
+    }
+
+    /**
+     * 单次登录：复刻原脚本「未连接」那一遍（必要时连 WiFi → 依次试 配置18/21 → 成败即止）。
+     * 保活已经在跑时，改插一次即时检测（不然两个状态机会打架）。
+     */
+    private fun oneShotLogin() {
+        markBusy(6000L)
+        val running = AppStore.load(this).serviceEnabled
+        if (running) {
+            LoginService.checkNow(this)
+            Toast.makeText(this, R.string.toast_one_shot_while_running, Toast.LENGTH_SHORT).show()
+        } else {
+            LoginService.oneShot(this)
+            Toast.makeText(this, R.string.toast_one_shot, Toast.LENGTH_SHORT).show()
+        }
+        logExpanded = true
+        applyLogState()
+        handler.postDelayed({ refresh() }, 500L)
     }
 
     /** 进程被系统回收后回到前台：开关是开的但服务没心跳 ⇒ 立刻自愈 */
@@ -135,6 +178,53 @@ class MainActivity : AppCompatActivity() {
     private fun markBusy(ms: Long = 2500L) {
         busyUntil = System.currentTimeMillis() + ms
         refresh()
+    }
+
+    // ------------------------------------------------------------ WiFi 自修复 / Shizuku
+
+    /**
+     * 一行说明「WiFi 自动修复」现在处于哪一级：
+     *  没开开关 → 去设置打开；Shizuku 没跑 → 提示；没授权 → 点这里授权；已授权 → 可以自动开 WiFi。
+     */
+    private fun onWifiFixClicked() {
+        val cfg = AppStore.load(this)
+        when {
+            !cfg.useShizuku -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                Toast.makeText(this, R.string.shizuku_enable_in_settings, Toast.LENGTH_SHORT).show()
+            }
+            !ShizukuShell.binderAlive() -> {
+                // Shizuku 没运行：能装就拉起来，不能就给一句人话
+                val opened = try {
+                    startActivity(packageManager.getLaunchIntentForPackage(SHIZUKU_PKG))
+                    true
+                } catch (_: Throwable) {
+                    false
+                }
+                if (!opened) {
+                    Toast.makeText(this, R.string.shizuku_not_running, Toast.LENGTH_LONG).show()
+                    try {
+                        startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(SHIZUKU_URL))
+                        )
+                    } catch (_: Throwable) {
+                    }
+                }
+            }
+            !ShizukuShell.hasPermission() -> ShizukuShell.requestPermission()
+            else -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                Toast.makeText(this, R.string.shizuku_granted, Toast.LENGTH_SHORT).show()
+            }
+        }
+        handler.postDelayed({ refresh() }, 600L)
+    }
+
+    private fun shizukuSubtitle(cfg: AppConfig): String = when {
+        !cfg.useShizuku -> getString(R.string.wifi_fix_off)
+        !ShizukuShell.binderAlive() -> getString(R.string.wifi_fix_no_binder)
+        !ShizukuShell.hasPermission() -> getString(R.string.wifi_fix_no_permission)
+        else -> getString(R.string.wifi_fix_ready, ShizukuShell.describe())
     }
 
     // ------------------------------------------------------------ 刷新
@@ -186,8 +276,19 @@ class MainActivity : AppCompatActivity() {
 
         b.btnStart.isEnabled = !running
         b.btnStop.isEnabled = running
+        b.btnOneShot.isEnabled = true
         b.statusProgress.visibility =
             if (System.currentTimeMillis() < busyUntil) View.VISIBLE else View.GONE
+
+        // WiFi 自动修复能力（Shizuku）
+        b.itemWifi.navTitle.setText(R.string.nav_wifi_fix_title)
+        b.itemWifi.navSubtitle.text = shizukuSubtitle(cfg)
+        b.itemWifi.navIcon.imageTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(
+                this,
+                if (cfg.useShizuku && ShizukuShell.hasPermission()) R.color.md_success else R.color.md_primary
+            )
+        )
 
         val batteryOk = PowerKit.ignoringBatteryOptimizations(this)
         b.itemBattery.navSubtitle.setText(
@@ -245,14 +346,20 @@ class MainActivity : AppCompatActivity() {
         else -> R.color.md_outline
     }
 
+    /**
+     * 日志：原脚本是终端滚动（最新在最下），所以
+     * 收起时只显示**最后几行**（不是最前面几行 —— 那会永远停在启动那几行），展开时给全量。
+     */
     private fun applyLogState() {
         val status = StatusStore.get(this)
-        b.statusLog.text = status.log.ifBlank { getString(R.string.log_empty) }
-        b.statusLog.maxLines = if (logExpanded) 200 else 8
+        val lines = if (logExpanded) status.lines else status.lines.takeLast(COLLAPSED_LOG_LINES)
+        b.statusLog.text =
+            if (lines.isEmpty()) getString(R.string.log_empty) else LogKit.render(this, lines)
+        b.statusLog.maxLines = if (logExpanded) 400 else COLLAPSED_LOG_LINES
         b.statusLog.ellipsize = if (logExpanded) null else TextUtils.TruncateAt.END
         b.btnToggleLog.setText(if (logExpanded) R.string.log_collapse else R.string.log_expand)
 
-        val hasLog = status.log.isNotBlank()
+        val hasLog = status.lines.isNotEmpty()
         b.btnToggleLog.isEnabled = hasLog
         b.btnCopyLog.isEnabled = hasLog
     }
@@ -288,8 +395,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun versionName(): String = try {
-        packageManager.getPackageInfo(packageName, 0).versionName ?: "0.2.0"
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "2.1.0"
     } catch (_: Throwable) {
-        "0.2.0"
+        "2.1.0"
+    }
+
+    private companion object {
+        const val COLLAPSED_LOG_LINES = 10
+        const val SHIZUKU_PKG = "moe.shizuku.privileged.api"
+        const val SHIZUKU_URL = "https://shizuku.rikka.app/download/"
     }
 }

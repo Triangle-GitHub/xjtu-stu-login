@@ -63,5 +63,15 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- Shizuku：拿 ADB shell 身份跑 `cmd wifi …`（等价原脚本里的 `$ADB shell`）。
+             authority 必须是 ${applicationId}.shizuku；permission 是官方要求的自我保护。 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

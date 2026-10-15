@@ -47,4 +47,13 @@
     <color name="md_inverse_on_surface">#2F3033</color>
     <color name="md_inverse_primary">#1F5E9E</color>
     <color name="md_surface_tint">#A5C8FF</color>
+
+    <!-- 运行日志配色（暗色）：对应原 Termux 脚本的 ANSI 等级色 -->
+    <color name="log_time">#9AA0A6</color>
+    <color name="log_bracket">#C4C6D0</color>
+    <color name="log_info">#4DD0E1</color>
+    <color name="log_stat">#81C784</color>
+    <color name="log_warn">#FFD54F</color>
+    <color name="log_error">#EF9A9A</color>
+    <color name="log_debug">#8A8D91</color>
 </resources>

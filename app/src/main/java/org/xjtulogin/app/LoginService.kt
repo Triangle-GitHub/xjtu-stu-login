@@ -12,7 +12,6 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -22,21 +21,34 @@ import org.xjtulogin.core.SrunClient
 import org.xjtulogin.core.SrunResult
 
 /**
- * 保活前台服务。
+ * 保活前台服务 —— 状态机**逐条对齐原 Termux 脚本 `keep_srun_v2.6.sh`**。
  *
- * 保活链条（缺一不可）：
- *  1. 明文 HTTP 放行（res/xml/network_security_config.xml）—— 否则每轮都是
- *     "CLEARTEXT communication ... not permitted"，登录永远失败；
- *  2. 前台服务 + START_STICKY + 常驻通知（被系统回收后自动重建）；
- *  3. 网络变化立即重检（ConnectivityManager 回调唤醒轮询，不等下一个间隔）；
+ * 原脚本三态：
+ *  - `disconnected`：宿舍网优先（连着→room；扫到→连上→room）→ 校园网已连就登录（配置 18/21，
+ *    每条 `run_with_timeout 10 ./bitsrun`）→ 只扫到就连它（`cmd wifi connect-network`）→ 主动扫描 →
+ *    `sleep t`（t 初值 5，登录全失败 -1，尝试连网 -2）
+ *  - `connected`：`sleep 5` → 查宿舍网（命中即回 disconnected）→ 续期（超时/失败即回 disconnected）
+ *  - `room`：`sleep 5` → 宿舍网还在吗（掉线即回 disconnected）
+ *
+ * 本服务的对应关系：
+ *  - `./bitsrun --config N` → 引擎 `SrunClient`（N = 网关 IP 倒数第二段，见 [configNo]）
+ *  - `$ADB shell cmd wifi …` → [WifiChannels]（Shizuku 拿 shell 身份；没有就降级）
+ *  - `termux-wifi-*`/`dumpsys` 探测 → [WifiKit]（本机 API）
+ *  - `log()` → [LogKit]（同样的 `HH:MM:SS [LEVEL] msg`、同样的等级与配色）
+ *
+ * 保活链条（原脚本之外的工程补充，缺一不可）：
+ *  1. 明文 HTTP 放行（res/xml/network_security_config.xml）；
+ *  2. 前台服务 + START_STICKY + 常驻通知；
+ *  3. 网络变化立即重检（唤醒等待，不等下一个 sleep 到点）；
  *  4. 心跳落盘（进程真死了，回前台能立刻发现并自愈）；
- *  5. 电池优化白名单（Doze/省电策略下不被掐）。
+ *  5. 电池优化白名单。
  */
 class LoginService : Service() {
 
     companion object {
         const val CHANNEL_ID = "keepalive"
         const val NOTIF_ID = 1001
+        const val BATTERY_NOTIF_ID = 1002
 
         /**
          * XJTU 全网实测只有这 4 个 srun 端点（2026-10-12 从校园网内扫 10.6.0-254.2 / 10.69.x.2 / 10.172.x.2 得出）：
@@ -44,9 +56,19 @@ class LoginService : Service() {
          * 用户配置之外自动兜底试这些 —— 食堂等区域归不同的 AC 服务，发给错的 AC 只会得到 login_error。
          */
         private val BUILTIN_GATEWAYS = listOf("10.6.8.2", "10.6.18.2", "10.6.21.2", "10.6.27.2")
+
+        /** 原脚本的「配置 N」= 网关 IP 倒数第二段（10.6.**18**.2 → 18） */
+        private val VALID_CFG = Regex("^10\\.6\\.(\\d+)\\.2$")
+
+        /** shell 单引号包裹（SSID/口令里可能有空格、中文、引号） */
+        private fun shQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
         const val ACTION_START = "org.xjtulogin.app.action.START"
         const val ACTION_STOP = "org.xjtulogin.app.action.STOP"
         const val ACTION_CHECK_NOW = "org.xjtulogin.app.action.CHECK_NOW"
+
+        /** 单次登录：只跑一遍 `disconnected`，成败即止（不常驻、不续期） */
+        const val ACTION_ONE_SHOT = "org.xjtulogin.app.action.ONE_SHOT"
 
         fun ensureChannel(ctx: Context) {
             val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
@@ -75,7 +97,7 @@ class LoginService : Service() {
         /** 停止保活并关掉开关 */
         fun stop(ctx: Context) {
             AppStore.save(ctx, AppStore.load(ctx).copy(serviceEnabled = false))
-            StatusStore.update(ctx, "已停止", "手动停止保活", "", StatusLevel.IDLE)
+            StatusStore.setStatus(ctx, "已停止", "手动停止保活", StatusLevel.IDLE)
             try {
                 ctx.stopService(Intent(ctx, LoginService::class.java))
             } catch (_: Throwable) {
@@ -85,6 +107,15 @@ class LoginService : Service() {
         /** 立即检测一次（已启动 = 插队检测；未启动 = 只检测这一轮） */
         fun checkNow(ctx: Context) {
             val i = Intent(ctx, LoginService::class.java).setAction(ACTION_CHECK_NOW)
+            try {
+                ContextCompat.startForegroundService(ctx, i)
+            } catch (_: Throwable) {
+            }
+        }
+
+        /** 单次登录（不常驻）—— 复刻原脚本 `disconnected` 那一遍 */
+        fun oneShot(ctx: Context) {
+            val i = Intent(ctx, LoginService::class.java).setAction(ACTION_ONE_SHOT)
             try {
                 ContextCompat.startForegroundService(ctx, i)
             } catch (_: Throwable) {
@@ -102,6 +133,14 @@ class LoginService : Service() {
     @Volatile private var bindBlocked = false
     /** 实际走通的 VPN 路由策略（用于状态展示） */
     @Volatile private var vpnStrategy: BindMode? = null
+    /** 原脚本的 `successful_config`：上次登录/续期成功的那对（网关+账号） */
+    @Volatile private var successful: LoginTarget? = null
+    /** 原脚本的 `refresh_count`（高耗电通知计数） */
+    private var refreshCount = 0
+    /** 原脚本的 `last_scan_time` */
+    private var lastScanAt = 0L
+    /** 上一次扫描不可用的提示只打一次，别刷屏 */
+    private var scanUnavailableLogged = false
 
     private var netCallback: ConnectivityManager.NetworkCallback? = null
 
@@ -118,9 +157,14 @@ class LoginService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 AppStore.save(this, AppStore.load(this).copy(serviceEnabled = false))
-                StatusStore.update(this, "已停止", "已从通知停止保活", "", StatusLevel.IDLE)
+                log(LogLevel.WARN, "检测到手动终止 (Ctrl+C)，脚本退出")
+                stopForeground(STOP_FOREGROUND_REMOVE)
                 shutdown()
                 return START_NOT_STICKY
+            }
+            ACTION_ONE_SHOT -> {
+                oneShot = true
+                wake(force = true)
             }
             ACTION_CHECK_NOW -> {
                 // 未启动时也允许「只检测这一轮」
@@ -134,7 +178,7 @@ class LoginService : Service() {
         val cfg = AppStore.load(this)
         if (!running) {
             running = true
-            oneShot = !cfg.serviceEnabled
+            if (intent?.action != ACTION_ONE_SHOT) oneShot = !cfg.serviceEnabled
             worker = Thread({ loop() }, "login-loop").also { it.start() }
         } else {
             wake(force = true)
@@ -160,41 +204,566 @@ class LoginService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ---------------------------------------------------------------- 轮询循环
+    // ---------------------------------------------------------------- 日志
 
-    private fun loop() {
-        while (running) {
-            var waitMs = 30_000L
-            try {
-                waitMs = withWakeLock { runCycle() }
-            } catch (t: Throwable) {
-                if (running) {
-                    StatusStore.update(
-                        this, "检测异常", t.message ?: t.javaClass.simpleName, "", StatusLevel.OFFLINE
-                    )
-                    waitMs = 30_000L
-                }
-            }
-            if (!running || oneShot) break
-            synchronized(gate) {
-                // 期间有网络变化/手动检测 ⇒ 立刻再来一轮
-                if (running && !wakeRequested) {
-                    try {
-                        gate.wait(waitMs.coerceAtLeast(2_000L))
-                    } catch (_: InterruptedException) {
-                    }
-                }
-                wakeRequested = false
-            }
+    private fun log(level: LogLevel, msg: String) {
+        StatusStore.append(this, level, msg)
+        // 日志是给别人看的（贴群里求助），状态卡也要跟着动
+        notifyStatus()
+    }
+
+    /** 原脚本 `log_adb_prefix()`：先打 `HH:MM:SS [INFO] ADB: `，再让命令输出跟在后面 */
+    private fun logAdb(cmd: String, out: ShizukuShell.Result?) {
+        val tail = when {
+            out == null -> "（shizuku 不可用）"
+            out.ok -> ""
+            else -> " (exit=${out.exit})"
         }
-        if (oneShot) {
-            running = false
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+        StatusStore.append(this, LogLevel.INFO, "ADB: $cmd$tail")
+        if (out != null && out.output.isNotBlank()) {
+            StatusStore.append(this, LogLevel.DEBG, out.output.trim().take(400).replace('\n', ' '))
+        }
+        notifyStatus()
+    }
+
+    /** 走 shell 探测时的「高耗电」提示（原脚本 refresh_wifi_cache 的等价物） */
+    private fun tickRefresh(where: String) {
+        refreshCount++
+        val cfg = AppStore.load(this)
+        if (!cfg.batteryWarning) return
+        if (refreshCount == 1 || refreshCount % 100 == 0) {
+            log(LogLevel.WARN, "正在刷新dumpsys (高耗电)")
+            notifyBatteryWarning(refreshCount, where)
         }
     }
 
-    /** 唤醒轮询（3000ms 内去抖，避免网络回调风暴导致连跑） */
+    // ---------------------------------------------------------------- 状态机
+
+    private enum class State { DISCONNECTED, CONNECTED, ROOM }
+
+    /** 原脚本的 `successful_config` */
+    private data class LoginTarget(val gateway: Gateway, val account: Account)
+
+    /** 原脚本的「配置 N」= 网关 IP 倒数第二段（10.6.**18**.2 → 18） */
+    private fun configNo(gw: Gateway): String {
+        val host = hostOf(gw.domain)
+        VALID_CFG.find(host)?.let { return it.groupValues[1] }
+        return host
+    }
+
+    private fun loop() {
+        val boot = AppStore.load(this)
+
+        log(LogLevel.INFO, "脚本已启动")
+        if (boot.wifiScan) {
+            log(LogLevel.INFO, "Wi‑Fi 扫描间隔: ${boot.scanIntervalSec}s")
+        } else {
+            log(LogLevel.WARN, "Wi‑Fi 扫描已禁用")
+        }
+        if (!boot.batteryWarning) {
+            log(LogLevel.WARN, "电池消耗通知已关闭")
+        }
+
+        // 原脚本的前置检查（找不到目录 / 找不到 bitsrun）⇒ 这里 = 账号与网关
+        if (boot.accounts.none { it.enabled && it.username.isNotBlank() } ||
+            boot.gateways.none { it.enabled && it.domain.isNotBlank() }
+        ) {
+            log(LogLevel.FATA, "缺少可用的账号/网关配置（请在设置里添加）")
+            StatusStore.setStatus(
+                this, "缺少配置", "请在设置里添加并勾选账号与网关",
+                StatusLevel.WARN, null, null
+            )
+            finishRun()
+            return
+        }
+
+        // 用户开了「自动开启 WiFi」：开启保活时开一次（原脚本没这条，是本 App 的补充）
+        autoEnableWifiOnce(boot)
+
+        var state = State.DISCONNECTED
+        while (running) {
+            val cfg = AppStore.load(this)
+            val next = when (state) {
+                State.DISCONNECTED -> runDisconnected(cfg)
+                State.CONNECTED -> runConnected(cfg)
+                State.ROOM -> runRoom(cfg)
+            }
+            if (next == null) break
+            state = next
+        }
+        finishRun()
+    }
+
+    private fun finishRun() {
+        running = false
+        if (oneShot) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
+        stopSelf()
+    }
+
+    /** 原脚本没有，但用户要求：开启保活时若 WiFi 关着，自动打开一次 */
+    private fun autoEnableWifiOnce(cfg: AppConfig) {
+        if (!cfg.autoEnableWifi) return
+        val ch = WifiChannels(this, cfg.useShizuku)
+        val enabled = ch.isWifiEnabled() ?: return
+        if (enabled) return
+        log(LogLevel.INFO, "WiFi 处于关闭状态，尝试自动打开")
+        if (ch.setWifiEnabled(true)) {
+            log(LogLevel.INFO, "WiFi 已打开（cmd wifi set-wifi-enabled enabled）")
+        } else {
+            log(LogLevel.WARN, "自动打开 WiFi 失败：需要 Shizuku 授权（设置页可授权），或手动打开 WiFi")
+        }
+    }
+
+    /** 原脚本 `disconnected` 状态；返回下一个状态，null = 结束 */
+    private fun runDisconnected(cfg: AppConfig): State? {
+        log(LogLevel.STAT, "进入未连接状态")
+        val ch = WifiChannels(this, cfg.useShizuku)
+        registerSuggestion(cfg, ch)
+
+        while (running) {
+            var t = cfg.baseLoopSec.coerceIn(1, 3600)
+
+            // 1) 宿舍 Wi‑Fi 已连接
+            val nowConnected = ch.connectedSsid()
+            if (cfg.rooms.any { ssidKey(it.ssid) == ssidKey(nowConnected) }) {
+                return State.ROOM
+            }
+
+            // 2) 宿舍 Wi‑Fi 扫描到但未连接 → 主动连（原脚本：cmd wifi connect-network "$ssid" wpa2 "$pass"）
+            val scanned = scanView(cfg, ch)
+            val room = cfg.rooms.firstOrNull { r -> scanned?.any { ssidKey(it) == ssidKey(r.ssid) } == true }
+            if (room != null) {
+                connectTo(ch, room.ssid, room.password.ifBlank { null })
+                return State.ROOM
+            }
+
+            // 3) 校园网处理
+            val onCampus = cfg.targetSsids.any { ssidKey(it) == ssidKey(nowConnected) } ||
+                (cfg.targetSsids.isEmpty() && nowConnected != null)
+            if (onCampus) {
+                log(LogLevel.INFO, "校园网已连接，尝试登录")
+                val login = tryLogins(cfg, ch, nowConnected ?: "")
+                if (login != null) {
+                    successful = login
+                    return State.CONNECTED
+                }
+                log(LogLevel.WARN, "所有配置均失败")
+                t -= 1
+            } else if (cfg.targetSsids.any { t0 -> scanned?.any { ssidKey(it) == ssidKey(t0) } == true }) {
+                val target = cfg.targetSsids.first { t0 -> scanned?.any { ssidKey(it) == ssidKey(t0) } == true }
+                log(LogLevel.INFO, "扫描到校园网，尝试连接")
+                connectTo(ch, target, null)
+                t -= 2
+            } else if (scanned == null) {
+                // 探测不了（无定位权限且没有 shell 身份）：原脚本此时同样是「当作没扫到」
+                log(LogLevel.INFO, "未检测到校园网")
+                log(LogLevel.DEBG, "（扫不到原因：本机读不到扫描结果，且没有 Shizuku shell 身份）")
+            } else {
+                log(LogLevel.INFO, "未检测到校园网")
+            }
+
+            // 4) 主动扫描
+            maybeScan(cfg, ch)
+
+            if (oneShot) return null
+            if (!sleepInterruptible(t)) return null
+        }
+        return null
+    }
+
+    /** 原脚本 `connected` 状态 */
+    private fun runConnected(cfg: AppConfig): State? {
+        log(LogLevel.STAT, "进入校园网状态")
+        val ch = WifiChannels(this, cfg.useShizuku)
+        val start = System.currentTimeMillis()
+        var renewals = 0
+
+        while (running) {
+            if (!sleepInterruptible(cfg.renewIntervalSec.coerceIn(1, 86400))) return null
+
+            // 检测宿舍 Wi‑Fi（带 refresh）
+            val scanned = scanView(cfg, ch, refresh = true)
+            if (cfg.rooms.any { r -> scanned?.any { ssidKey(it) == ssidKey(r.ssid) } == true }) {
+                val sec = (System.currentTimeMillis() - start) / 1000
+                log(LogLevel.WARN, "检测到宿舍Wi‑Fi (在线${sec}s, 续期${renewals}次)")
+                successful = null
+                return State.DISCONNECTED
+            }
+
+            // 续期
+            val target = successful
+            if (target == null) {
+                successful = null
+                return State.DISCONNECTED
+            }
+            val r = attemptLogin(cfg, ch, target)
+            val sec = (System.currentTimeMillis() - start) / 1000
+            when (r.outcome) {
+                Outcome.ONLINE -> {
+                    renewals++
+                    log(LogLevel.INFO, "使用配置${configNo(target.gateway)}成功续期${renewals}次，共${sec}秒")
+                }
+                Outcome.TIMEOUT -> {
+                    log(LogLevel.ERRO, "bitsrun 续期超时 (${cfg.loginTimeoutSec}s)")
+                    successful = null
+                    return State.DISCONNECTED
+                }
+                Outcome.FAILED -> {
+                    log(LogLevel.WARN, "第${renewals + 1}次续期失败")
+                    if (r.detail.isNotBlank()) log(LogLevel.DEBG, r.detail)
+                    successful = null
+                    return State.DISCONNECTED
+                }
+            }
+            maybeScan(cfg, ch)
+        }
+        return null
+    }
+
+    /** 原脚本 `room` 状态 */
+    private fun runRoom(cfg: AppConfig): State? {
+        log(LogLevel.STAT, "进入宿舍模式")
+        val ch = WifiChannels(this, cfg.useShizuku)
+        val start = System.currentTimeMillis()
+        while (running) {
+            if (!sleepInterruptible(cfg.renewIntervalSec.coerceIn(1, 86400))) return null
+            val nowConnected = ch.connectedSsid()
+            val room = cfg.rooms.firstOrNull { ssidKey(it.ssid) == ssidKey(nowConnected) }
+            val sec = (System.currentTimeMillis() - start) / 1000
+            if (room != null) {
+                log(LogLevel.INFO, "宿舍Wi‑Fi在线: ${room.ssid} (${sec}s)")
+            } else {
+                log(LogLevel.WARN, "宿舍Wi‑Fi断开 (在线${sec}s)")
+                return State.DISCONNECTED
+            }
+            maybeScan(cfg, ch)
+        }
+        return null
+    }
+
+    // ---------------------------------------------------------------- 动作（原脚本的 cmd wifi 调用）
+
+    /** 原脚本每次进未连接态都会尝试 `cmd wifi connect-network`；这里是「登记网络建议」的等价动作 */
+    private fun registerSuggestion(cfg: AppConfig, ch: WifiChannels) {
+        if (ch.canControl) return // 有 shell 身份就直接连，不需要系统兜底
+        for (s in cfg.targetSsids) {
+            if (WifiKit.suggestNetwork(this, s)) {
+                log(LogLevel.DEBG, "已登记「网络建议」：$s（系统会在范围内自动连接）")
+            }
+        }
+    }
+
+    private fun connectTo(ch: WifiChannels, ssid: String, password: String?) {
+        if (ch.canControl) {
+            val sec = if (password.isNullOrEmpty()) "open" else "wpa2"
+            val cmd = "cmd wifi connect-network '$ssid' $sec" +
+                if (password.isNullOrEmpty()) "" else " '***'"
+            val r = ch.shell?.let { shell ->
+                ShizukuShell.run(
+                    this,
+                    "cmd wifi connect-network ${shQuote(ssid)} $sec" +
+                        if (password.isNullOrEmpty()) "" else " ${shQuote(password)}"
+                )
+            }
+            logAdb(cmd, r)
+        } else {
+            val ok = ch.connect(ssid, password)
+            log(LogLevel.DEBG, if (ok) "已登记「网络建议」：$ssid" else "登记「网络建议」失败：$ssid")
+        }
+    }
+
+    private fun maybeScan(cfg: AppConfig, ch: WifiChannels) {
+        if (!cfg.wifiScan) return
+        val now = System.currentTimeMillis()
+        if (now - lastScanAt < cfg.scanIntervalSec * 1000L) return
+        if (!ch.canControl) {
+            if (!scanUnavailableLogged) {
+                scanUnavailableLogged = true
+                log(LogLevel.WARN, "Wi‑Fi 扫描需要 Shizuku shell 身份，当前已跳过（设置页可授权）")
+            }
+            return
+        }
+        lastScanAt = now
+        val ok = ch.startScan()
+        log(LogLevel.INFO, if (ok) "Wi‑Fi扫描: 已执行" else "Wi‑Fi扫描: 失败")
+    }
+
+    /** 探测一次扫描结果；走 shell 时计入「高耗电」计数（原脚本 refresh_wifi_cache 的等价物） */
+    private fun scanView(cfg: AppConfig, ch: WifiChannels, refresh: Boolean = false): List<String>? {
+        val list = ch.scanSsids()
+        if (ch.lastReadViaShell && (refresh || list != null)) tickRefresh("list-scan-results")
+        return list
+    }
+
+    // ---------------------------------------------------------------- 登录（原脚本的 ./bitsrun --config N）
+
+    private enum class Outcome { ONLINE, TIMEOUT, FAILED }
+
+    private data class Attempt2(
+        val outcome: Outcome,
+        val ip: String? = null,
+        val detail: String = "",
+        /** 网关真的应答了（拿到响应，而不只是网络错）—— VPN 下决定要不要降级绑卡策略 */
+        val answered: Boolean = false,
+        val alreadyOnline: Boolean = false,
+    )
+
+    /**
+     * 按「配置」顺序把登录试一遍 —— 对应原脚本：
+     * ```
+     * for cfg in "${CONFIGS[@]}"; do
+     *     if run_with_timeout 10 ./bitsrun --config "$cfg"; then log INFO "配置${cfg}登录成功"; ...; break
+     *     elif [ $? -eq 124 ]; then log ERRO "bitsrun 超时 (10s)"
+     *     else sleep 0.2; fi
+     * done
+     * ```
+     * 返回成功的那一对（= `successful_config`），全失败返回 null。
+     */
+    private fun tryLogins(cfg: AppConfig, ch: WifiChannels, ssid: String): LoginTarget? {
+        val accounts = cfg.accounts.filter { it.enabled && it.username.isNotBlank() }
+        val gateways = loginGateways(cfg)
+        for (gw in gateways) {
+            for (acc in accounts) {
+                if (!running) return null
+                val r = attemptLogin(cfg, ch, LoginTarget(gw, acc))
+                when (r.outcome) {
+                    Outcome.ONLINE -> {
+                        log(LogLevel.INFO, "配置${configNo(gw)}登录成功")
+                        if (r.detail.isNotBlank()) log(LogLevel.DEBG, r.detail)
+                        AppStore.save(this, AppStore.load(this).copy(lastGoodGateway = hostOf(gw.domain)))
+                        publishState(ssid, r.ip, online = true)
+                        return LoginTarget(gw, acc)
+                    }
+                    Outcome.TIMEOUT -> log(LogLevel.ERRO, "bitsrun 超时 (${cfg.loginTimeoutSec}s)")
+                    Outcome.FAILED -> {
+                        if (r.detail.isNotBlank()) log(LogLevel.DEBG, r.detail)
+                        sleepQuiet(200) // 原脚本失败后 sleep 0.2
+                    }
+                }
+            }
+        }
+        publishState(ssid, null, online = false)
+        return null
+    }
+
+    /** 配置的网关优先（顺序即优先级），再补没配过的内置端点；上次成功的排最前 */
+    private fun loginGateways(cfg: AppConfig): List<Gateway> {
+        val configured = cfg.gateways.filter { it.enabled && it.domain.isNotBlank() }
+        val known = configured.map { hostOf(it.domain) }.toSet()
+        return (configured + BUILTIN_GATEWAYS.filter { it !in known }.map { Gateway(it) })
+            .sortedByDescending { hostOf(it.domain) == cfg.lastGoodGateway }
+    }
+
+    /** VPN 下的路由策略：绑 socket → 进程绑 WiFi → 不绑（默认路由） */
+    private enum class BindMode { SOCKET, PROCESS, NONE }
+
+    /**
+     * 一次「查在线状态 → 不在线就登录」。整轮受 [AppConfig.loginTimeoutSec] 约束
+     * （原脚本的 `run_with_timeout 10`）。
+     */
+    private fun attemptLogin(cfg: AppConfig, ch: WifiChannels, target: LoginTarget): Attempt2 {
+        val started = System.currentTimeMillis()
+        val budgetMs = cfg.loginTimeoutSec.coerceIn(2, 600) * 1000L
+        val net = WifiKit.snapshot(this)
+        val isOnline = runAttempt(cfg, net, target, budgetMs)
+        if (System.currentTimeMillis() - started > budgetMs) {
+            return Attempt2(Outcome.TIMEOUT)
+        }
+        return isOnline
+    }
+
+    @Suppress("DEPRECATION")
+    private fun runAttempt(
+        cfg: AppConfig,
+        net: NetInfo,
+        target: LoginTarget,
+        budgetMs: Long,
+    ): Attempt2 {
+        val wifiNet = net.wifiNetwork
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val gw = target.gateway
+        val acc = target.account
+        val label = maskUser(if (acc.userType.isNotBlank()) "${acc.username}@${acc.userType}" else acc.username)
+
+        // VPN 三层降级（v0.2.2 的修复，保留）
+        var mode = if (net.vpnActive && wifiNet != null) {
+            if (bindBlocked) BindMode.PROCESS else BindMode.SOCKET
+        } else {
+            BindMode.NONE
+        }
+        var processBound = false
+
+        fun bind(): Boolean {
+            if (mode == BindMode.PROCESS && wifiNet != null && !processBound) {
+                processBound = runCatching { cm?.bindProcessToNetwork(wifiNet) == true }
+                    .getOrDefault(false)
+            }
+            return processBound
+        }
+
+        try {
+            var attempt = oneCall(cfg, gw, acc, net, mode, budgetMs, label)
+            if (!attempt.answered && mode == BindMode.SOCKET) {
+                bindBlocked = true
+                mode = BindMode.PROCESS
+                bind()
+                attempt = oneCall(cfg, gw, acc, net, mode, budgetMs, label)
+            }
+            if (!attempt.answered && mode == BindMode.PROCESS) {
+                mode = BindMode.NONE
+                attempt = oneCall(cfg, gw, acc, net, mode, budgetMs, label)
+            }
+            if (attempt.answered) vpnStrategy = mode
+            return attempt
+        } finally {
+            if (processBound) {
+                runCatching { cm?.bindProcessToNetwork(null) }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun oneCall(
+        cfg: AppConfig,
+        gw: Gateway,
+        acc: Account,
+        net: NetInfo,
+        mode: BindMode,
+        budgetMs: Long,
+        label: String,
+    ): Attempt2 {
+        val wifiNet = net.wifiNetwork
+        val binder: org.xjtulogin.core.ConnectionFactory? =
+            if (mode == BindMode.SOCKET && wifiNet != null) {
+                org.xjtulogin.core.ConnectionFactory { url ->
+                    (wifiNet.openConnection(url) as? java.net.HttpURLConnection)
+                        ?: throw java.io.IOException("Binding socket to network failed: unsupported connection")
+                }
+            } else null
+
+        val timeout = minOf(cfg.timeoutMs.toLong(), budgetMs).toInt().coerceIn(1000, 60_000)
+        val client = SrunClient(baseUrlOf(gw.domain), timeout, connectionFactory = binder)
+        val localIp = net.ipv4 ?: ""
+        return try {
+            val (online, gwIp) = client.loginStatus()
+            // 认证 IP 必须用「网关自己报的 client_ip」—— 那才是网关认的地址。
+            // 本机网卡 IP 在部分区域（实测：食堂）与它不一致 ⇒ 拿本机 IP 去登录会被判 login_error。
+            val authIp = gwIp?.takeIf { it.isNotBlank() } ?: localIp
+            if (online) {
+                Attempt2(
+                    Outcome.ONLINE, gwIp ?: authIp,
+                    "$label@${hostOf(gw.domain)} 已在线",
+                    answered = true, alreadyOnline = true
+                )
+            } else {
+                val form = LoginForm(
+                    domain = gw.domain,
+                    username = acc.username,
+                    userType = acc.userType,
+                    password = acc.password,
+                )
+                val meta = LoginMeta(
+                    acid = gw.acid, n = gw.n, type = gw.type,
+                    os = cfg.metaOs, name = cfg.metaName,
+                )
+                when (val r = client.doLogin(form, meta, authIp)) {
+                    is SrunResult.Ok -> Attempt2(
+                        Outcome.ONLINE, r.ip,
+                        "$label@${hostOf(gw.domain)} 登录成功 IP=${r.ip ?: authIp}" +
+                            if (authIp != localIp) "（认证IP≠本机IP）" else "",
+                        answered = true
+                    )
+                    is SrunResult.Rejected -> {
+                        if (r.error.contains("online", ignoreCase = true)) {
+                            // 网关认为该 IP/账号已在线，等价于成功
+                            Attempt2(
+                                Outcome.ONLINE, authIp,
+                                "$label@${hostOf(gw.domain)} 网关提示已在线：${r.error}",
+                                answered = true, alreadyOnline = true
+                            )
+                        } else {
+                            Attempt2(
+                                Outcome.FAILED, null,
+                                "$label@${hostOf(gw.domain)} 拒绝：${r.error}${loginErrorHint(r.error)}",
+                                answered = true
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            Attempt2(Outcome.FAILED, null, "$label@${hostOf(gw.domain)} 失败：${friendlyError(t)}")
+        }
+    }
+
+    /** 网关错误码补一句人话（login_error 基本都是后缀/密码问题） */
+    private fun loginErrorHint(error: String): String = when {
+        error.contains("login_error", ignoreCase = true) ->
+            "（查账号密码，及运营商后缀：西交校园网填 stu）"
+        error.contains("E2531") || error.contains("欠费") -> "（账号欠费）"
+        error.contains("E2553") -> "（账号已在别处在线）"
+        else -> ""
+    }
+
+    // ---------------------------------------------------------------- 状态卡 / 等待
+
+    private fun publishState(ssid: String?, ip: String?, online: Boolean) {
+        val net = WifiKit.snapshot(this)
+        val detail = buildString {
+            append("SSID=").append(ssid?.takeIf { it.isNotBlank() } ?: net.ssid ?: "未知")
+            append(" IP=").append(ip ?: net.ipv4 ?: "-")
+            vpnStrategy?.let {
+                append(" · VPN:")
+                append(
+                    when (it) {
+                        BindMode.SOCKET -> "已绕过(绑网卡)"
+                        BindMode.PROCESS -> "已绕过(进程绑WiFi)"
+                        BindMode.NONE -> "走默认路由"
+                    }
+                )
+            }
+        }
+        StatusStore.setStatus(
+            this,
+            if (online) "已在线" else "未登录",
+            detail,
+            if (online) StatusLevel.ONLINE else StatusLevel.OFFLINE,
+            ssid ?: net.ssid,
+            ip ?: net.ipv4,
+        )
+    }
+
+    /** 原脚本的 `sleep t`，但要能被「网络变化 / 手动检测 / 停止」提前叫醒 */
+    private fun sleepInterruptible(sec: Int): Boolean {
+        if (!running) return false
+        StatusStore.beat(this)
+        val deadline = System.currentTimeMillis() + sec * 1000L
+        synchronized(gate) {
+            while (running && System.currentTimeMillis() < deadline) {
+                if (wakeRequested && System.currentTimeMillis() - lastWakeAt > 500L) break
+                val left = deadline - System.currentTimeMillis()
+                if (left <= 0) break
+                try {
+                    gate.wait(minOf(left, 1000L))
+                } catch (_: InterruptedException) {
+                    return false
+                }
+            }
+            wakeRequested = false
+        }
+        return running
+    }
+
+    private fun sleepQuiet(ms: Long) {
+        try {
+            Thread.sleep(ms)
+        } catch (_: InterruptedException) {
+        }
+    }
+
+    /** 唤醒等待（网络变化/手动检测）：让 5s 的 sleep 立刻结束，重新走一遍状态机 */
     private fun wake(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (!force && now - lastWakeAt < 3_000L) return
@@ -202,28 +771,6 @@ class LoginService : Service() {
         synchronized(gate) {
             wakeRequested = true
             gate.notifyAll()
-        }
-    }
-
-    /** CPU 在 Doze 下会休眠，整轮检测期间短暂持锁，保证请求真的发出去 */
-    private inline fun <T> withWakeLock(block: () -> T): T {
-        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        val lock = try {
-            pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "xjtulogin:cycle")
-        } catch (_: Throwable) {
-            null
-        }
-        try {
-            try {
-                lock?.acquire(60_000L)
-            } catch (_: Throwable) {
-            }
-            return block()
-        } finally {
-            try {
-                if (lock?.isHeld == true) lock.release()
-            } catch (_: Throwable) {
-            }
         }
     }
 
@@ -240,287 +787,11 @@ class LoginService : Service() {
         }
     }
 
-    // ---------------------------------------------------------------- 单轮检测
-
-    /** 单轮检测；返回下一轮等待毫秒 */
-    private fun runCycle(): Long {
-        val cfg = AppStore.load(this)
-        val pollMs = cfg.pollIntervalSec.coerceIn(5, 86400) * 1000L
-        val net = WifiKit.snapshot(this)
-
-        // 只有 VPN 活着时才需要绑网卡（没 VPN 时默认路由本来就是 WiFi，白绑还容易踩 OEM 限制）。
-        // 注意：EPERM 这类失败是在 connect 阶段抛的 —— 必须在上层重试兜底，不能只在这里 catch。
-        val binder: org.xjtulogin.core.ConnectionFactory? =
-            if (net.vpnActive) net.wifiNetwork?.let { n ->
-                org.xjtulogin.core.ConnectionFactory { url ->
-                    (n.openConnection(url) as? java.net.HttpURLConnection)
-                        ?: throw java.io.IOException("Binding socket to network failed: unsupported connection")
-                }
-            } else null
-
-        // 1) 宿舍网：跳过（不占用校园网账号）
-        val netSsidKey = net.ssid?.let { ssidKey(it) }
-        if (netSsidKey != null && netSsidKey in cfg.roomSsids.map { ssidKey(it) }) {
-            val text = "宿舍网 ${net.ssid}，跳过登录"
-            publish("宿舍网，已跳过", text, "SSID=${net.ssid} IP=${net.ipv4 ?: "-"}\n已跳过本轮", StatusLevel.IDLE, net.ssid, net.ipv4)
-            return pollMs
-        }
-
-        // 2) 网络形态校验
-        if (!net.wifi) {
-            val text = when {
-                net.vpnActive && net.wifiNetwork == null -> "VPN 占用了默认网络，但没有可用的 WiFi 连接"
-                net.connected -> "当前不是 WiFi（可能在用移动数据）"
-                else -> "当前没有可用网络"
-            }
-            publish("未连接 WiFi", text, text, StatusLevel.WARN, net.ssid, net.ipv4)
-            return pollMs
-        }
-        if (cfg.targetSsids.isNotEmpty() && netSsidKey != null && netSsidKey !in cfg.targetSsids.map { ssidKey(it) }) {
-            val text = "当前 WiFi「${net.ssid}」不在目标列表 ${cfg.targetSsids}"
-            publish("不在校园网", text, text, StatusLevel.WARN, net.ssid, net.ipv4)
-            return pollMs
-        }
-
-        val accounts = cfg.accounts.filter { it.enabled && it.username.isNotBlank() }
-        // 配置的网关优先（顺序即优先级），再补上没配过的内置端点；上次成功的排最前
-        val configured = cfg.gateways.filter { it.enabled && it.domain.isNotBlank() }
-        val known = configured.map { hostOf(it.domain) }.toSet()
-        val gateways = (configured + BUILTIN_GATEWAYS.filter { it !in known }.map { Gateway(it) })
-            .sortedByDescending { hostOf(it.domain) == cfg.lastGoodGateway }
-        if (accounts.isEmpty() || gateways.isEmpty()) {
-            val text = "请在设置里添加并勾选账号与网关"
-            publish("缺少配置", text, text, StatusLevel.WARN)
-            return pollMs
-        }
-
-        val sb = StringBuilder()
-        sb.append("SSID=${net.ssid ?: "(读不到)"} IP=${net.ipv4 ?: "(未知)"}\n")
-        if (net.ssid == null) {
-            sb.append("! 读不到 SSID（缺定位权限？）—— 已按未知网络继续尝试\n")
-        }
-
-        if (net.vpnActive) {
-            sb.append(
-                if (net.wifiNetwork != null) "! 检测到 VPN：登录请求将绑定 WiFi 网卡直连网关（不穿隧道）\n"
-                else "! 检测到 VPN 且找不到 WiFi 网络：可能无法直连网关\n"
-            )
-        }
-
-        var online = false
-        var attempts = 0
-        var lastError: String? = null
-        var lastLevel = StatusLevel.OFFLINE
-        var onlineIp: String? = null
-
-        loop@ for (acc in accounts) {
-            if (!running) break
-            for (gw in gateways) {
-                if (!running) break
-                attempts++
-                val full = if (acc.userType.isNotBlank()) "${acc.username}@${acc.userType}" else acc.username
-                val label = maskUser(full)
-                sb.append("→ $label @ ${gw.domain} ")
-
-                // VPN 下三级策略：绑 socket → 进程绑 WiFi → 默认路由（每级都被拒才降级）
-                var mode = if (net.vpnActive && net.wifiNetwork != null) {
-                    if (bindBlocked) BindMode.PROCESS else BindMode.SOCKET
-                } else BindMode.NONE
-
-                var r = attemptLogin(acc, gw, cfg, net, mode, sb)
-                if (!r.answered && mode == BindMode.SOCKET) {
-                    bindBlocked = true
-                    sb.append(
-                        if (r.bindRejected) "  · 系统拒绝绑网卡（EPERM），改试「进程绑 WiFi」…\n→ $label @ ${gw.domain} "
-                        else "  · 绑网卡这路没通，改试「进程绑 WiFi」…\n→ $label @ ${gw.domain} "
-                    )
-                    mode = BindMode.PROCESS
-                    r = attemptLogin(acc, gw, cfg, net, mode, sb)
-                }
-                if (!r.answered && mode == BindMode.PROCESS) {
-                    sb.append("  · 进程绑 WiFi 也不行，改走默认路由…\n→ $label @ ${gw.domain} ")
-                    mode = BindMode.NONE
-                    r = attemptLogin(acc, gw, cfg, net, mode, sb)
-                }
-                if (r.answered) vpnStrategy = mode
-                if (r.online) {
-                    // 记住这个区域能用的网关，下次直接先试它
-                    val host = hostOf(gw.domain)
-                    if (cfg.lastGoodGateway != host) {
-                        AppStore.save(this, AppStore.load(this).copy(lastGoodGateway = host))
-                    }
-                }
-
-                when {
-                    r.online -> {
-                        online = true
-                        onlineIp = r.ip
-                        break@loop
-                    }
-                    r.rejected -> {
-                        lastError = r.error
-                        lastLevel = StatusLevel.OFFLINE
-                    }
-                    else -> {
-                        lastError = r.error
-                        lastLevel = if (r.warn) StatusLevel.WARN else StatusLevel.OFFLINE
-                    }
-                }
-            }
-        }
-
-        val ipText = onlineIp ?: net.ipv4
-        val summary = if (online) "已在线" else "未登录"
-        val detail = buildString {
-            append("SSID=").append(net.ssid ?: "未知")
-            append(" IP=").append(ipText ?: "-")
-            append(" · 尝试 ").append(attempts).append(" 次")
-            if (net.vpnActive) {
-                append(" · VPN:").append(
-                    when (vpnStrategy) {
-                        BindMode.SOCKET -> "已绕过(绑网卡)"
-                        BindMode.PROCESS -> "已绕过(进程绑WiFi)"
-                        else -> "走默认路由（若失败请在 VPN 客户端放行校园网段）"
-                    }
-                )
-            }
-            if (!online && lastError != null) append(" · ").append(lastError)
-        }
-        publish(summary, detail, sb.toString(), if (online) StatusLevel.ONLINE else lastLevel, net.ssid, ipText)
-        return pollMs
-    }
-
-    /** VPN 下的路由策略：绑 socket → 进程绑 WiFi → 不绑（默认路由） */
-    private enum class BindMode { SOCKET, PROCESS, NONE }
-
-    private data class Attempt(
-        val online: Boolean = false,
-        val ip: String? = null,
-        val rejected: Boolean = false,
-        val error: String? = null,
-        val warn: Boolean = false,
-        val bindRejected: Boolean = false,
-        /** 网关真的应答了（拿到响应，而不只是网络错） */
-        val answered: Boolean = false,
-    )
-
-    /** 一轮「查在线状态 → 不在线就登录」；binder=null 表示走默认路由 */
-    @Suppress("DEPRECATION")
-    private fun attemptLogin(
-        acc: Account,
-        gw: Gateway,
-        cfg: AppConfig,
-        net: NetInfo,
-        mode: BindMode,
-        sb: StringBuilder,
-    ): Attempt {
-        val wifiNet = net.wifiNetwork
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        var processBound = false
-        if (mode == BindMode.PROCESS && wifiNet != null) {
-            processBound = try {
-                cm?.bindProcessToNetwork(wifiNet)
-                true
-            } catch (_: Throwable) {
-                false
-            }
-        }
-        try {
-            val binder = if (mode == BindMode.SOCKET && wifiNet != null) {
-                org.xjtulogin.core.ConnectionFactory { url ->
-                    (wifiNet.openConnection(url) as? java.net.HttpURLConnection)
-                        ?: throw java.io.IOException("Binding socket to network failed: unsupported connection")
-                }
-            } else null
-            val client = SrunClient(baseUrlOf(gw.domain), cfg.timeoutMs, connectionFactory = binder)
-            val localIp = net.ipv4 ?: ""
-            return try {
-                val (isOnline, gwIp) = client.loginStatus()
-                // 认证 IP 必须用「网关自己报的 client_ip」—— 那才是网关认的地址。
-                // 本机网卡 IP 在部分区域（实测：食堂）与它不一致 ⇒ 拿本机 IP 去登录会被判 login_error。
-                // 上游 BitSrunLoginGo 同样取自 LoginStatus() 的 client_ip（仅当响应缺失时才去门户页面嗅探）。
-                val authIp = gwIp?.takeIf { it.isNotBlank() } ?: localIp
-                if (isOnline) {
-                    sb.append("已在线 ✓\n")
-                    Attempt(online = true, ip = gwIp ?: authIp, answered = true)
-                } else {
-                    sb.append("未在线，登录… ")
-                    if (authIp != localIp) sb.append("(认证IP=$authIp ≠ 本机 $localIp) ")
-                    val form = LoginForm(
-                        domain = gw.domain,
-                        username = acc.username,
-                        userType = acc.userType,
-                        password = acc.password,
-                    )
-                    val meta = LoginMeta(
-                        acid = gw.acid, n = gw.n, type = gw.type,
-                        os = cfg.metaOs, name = cfg.metaName,
-                    )
-                    when (val r = client.doLogin(form, meta, authIp)) {
-                        is SrunResult.Ok -> {
-                            sb.append("登录成功 ✓ ${r.ip ?: ""}\n")
-                            Attempt(online = true, ip = r.ip, answered = true)
-                        }
-                        is SrunResult.Rejected -> {
-                            if (r.error.contains("online", ignoreCase = true)) {
-                                // 网关认为该 IP/账号已在线，等价于成功
-                                sb.append("网关提示已在线 ✓ (${r.error})\n")
-                                Attempt(online = true, answered = true)
-                            } else {
-                                sb.append("拒绝: ${r.error}${loginErrorHint(r.error)}\n")
-                                Attempt(rejected = true, error = r.error, answered = true)
-                            }
-                        }
-                    }
-                }
-            } catch (t: Throwable) {
-                val msg = friendlyError(t)
-                sb.append("失败: $msg\n")
-                if (net.vpnActive && (t is java.net.SocketTimeoutException || t is java.net.ConnectException)) {
-                    sb.append("  · VPN 可能在抢路由：请在 VPN 客户端把校园网段（10.6.0.0/16、10.172.0.0/16）设为直连，或临时关闭 VPN\n")
-                }
-                Attempt(
-                    error = msg,
-                    warn = msg.contains("拦截") || msg.contains("权限"),
-                    bindRejected = isBindRejected(t) || msg.contains("绑定 WiFi 网卡"),
-                )
-            }
-        } finally {
-            if (processBound) {
-                try {
-                    cm?.bindProcessToNetwork(null)
-                } catch (_: Throwable) {
-                }
-            }
-        }
-    }
-
-    /** 是不是「系统不允许把 socket 绑到该网络」这类失败 */
-    private fun isBindRejected(t: Throwable): Boolean {
-        val m = t.message ?: return false
-        return m.contains("Binding socket to network", ignoreCase = true) ||
-            m.contains("EPERM", ignoreCase = true)
-    }
-
-    /** 学号脱敏：日志/通知里不出现完整学号（同学常把日志贴群里求助） */
-    private fun maskUser(name: String): String {
-        val base = name.substringBefore('@')
-        val suffix = name.substringAfter('@', "")
-        val masked = if (base.length <= 4) "****" else base.take(4) + "****" + base.takeLast(2)
-        return if (suffix.isEmpty()) masked else "$masked@$suffix"
-    }
+    // ---------------------------------------------------------------- 工具
 
     /** SSID 宽松比较：忽略大小写，- 与空格视作 _（xjtu-stu / XJTU_STU 都能命中） */
-    private fun ssidKey(s: String): String = s.trim().uppercase().replace('-', '_').replace(' ', '_')
-
-    /** 网关错误码补一句人话（login_error 基本都是后缀/密码问题） */
-    private fun loginErrorHint(error: String): String = when {
-        error.contains("login_error", ignoreCase = true) ->
-            "（查账号密码，及运营商后缀：西交校园网填 stu）"
-        error.contains("E2531") || error.contains("欠费") -> "（账号欠费）"
-        error.contains("E2553") -> "（账号已在别处在线）"
-        else -> ""
-    }
+    private fun ssidKey(s: String?): String? =
+        s?.trim()?.uppercase()?.replace('-', '_')?.replace(' ', '_')
 
     /** 去掉协议前缀与结尾斜杠，只留 host（用于比对/记忆） */
     private fun hostOf(domain: String): String =
@@ -530,6 +801,14 @@ class LoginService : Service() {
         val base = if (domain.startsWith("http://") || domain.startsWith("https://")) domain
         else "http://$domain"
         return if (base.endsWith("/")) base else "$base/"
+    }
+
+    /** 学号脱敏：日志/通知里不出现完整学号（同学常把日志贴群里求助） */
+    private fun maskUser(name: String): String {
+        val base = name.substringBefore('@')
+        val suffix = name.substringAfter('@', "")
+        val masked = if (base.length <= 4) "****" else base.take(4) + "****" + base.takeLast(2)
+        return if (suffix.isEmpty()) masked else "$masked@$suffix"
     }
 
     /** 把底层异常翻译成用户能看懂的一句话（尤其 cleartext 这种坑） */
@@ -548,18 +827,6 @@ class LoginService : Service() {
             t is java.net.UnknownHostException -> "无法解析网关地址"
             else -> raw.take(120)
         }
-    }
-
-    private fun publish(
-        summary: String,
-        detail: String,
-        log: String,
-        level: StatusLevel,
-        ssid: String? = null,
-        ip: String? = null,
-    ) {
-        StatusStore.update(this, summary, detail, log, level, ssid, ip)
-        notifyStatus()
     }
 
     // ---------------------------------------------------------------- 通知
@@ -584,13 +851,35 @@ class LoginService : Service() {
             .setContentText(s.detail.ifBlank { getString(R.string.notif_channel_desc) })
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    s.log.ifBlank { s.detail.ifBlank { getString(R.string.notif_channel_desc) } }
+                    s.logTail(8).ifBlank { s.detail.ifBlank { getString(R.string.notif_channel_desc) } }
                 )
             )
             .setOngoing(true)
             .build()
         try {
             NotificationManagerCompat.from(this).notify(NOTIF_ID, n)
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** 原脚本 `termux-notification --title 电池消耗警告 --priority high` 的等价物 */
+    private fun notifyBatteryWarning(count: Int, where: String) {
+        if (!PowerKit.notificationsEnabled(this)) return
+        val n = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_battery)
+            .setContentTitle("电池消耗警告")
+            .setContentText("高耗电：正在刷新dumpsys (连续${count}次) · $where")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this, 3, Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            )
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(BATTERY_NOTIF_ID, n)
         } catch (_: Throwable) {
         }
     }
@@ -628,4 +917,5 @@ class LoginService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
+
 }

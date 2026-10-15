@@ -180,3 +180,47 @@
 - **影响**：master 与 `v1.0.0`~`v2.0.0` 全部 tag 的 sha 已变 —— 下方历次记录的「交付 sha」指的是**重写前**的提交，只作痕迹保留。两个远端（gitea 私库 / GitHub 公开仓）均 force push。
 - **同时确认**：`ref-phone/`（明文口令 YAML）、`ref-src/`（AGPL 源码与二进制）**从未入库**，历史里不存在完整学号；本次全历史 grep 复核真实学号位 = 0 命中。
 - **遗留**：中文文案与日志对齐原 Termux 脚本 `keep_srun_v2.6.sh` 的重写、Shizuku/WiFi 自修复、单次登录 —— 见下一条。
+
+## 2026-10-15 —— v2.1.0：保活逻辑对齐原 Termux 脚本 + WiFi 自动修复（Shizuku）+ 单次登录
+
+**一、保活状态机 = 原脚本 `keep_srun_v2.6.sh` 逐条对齐**
+- 三态 `disconnected / connected / room`，含每次进入的 `STAT` 行；
+- **时序照抄**：`connected` 每 **5s** 续期；单次登录整体预算 **10s**（原 `run_with_timeout 10`）；`disconnected` 里 `t=5`
+  且「登录全失败 -1 / 尝试连网 -2」；扫描最小间隔 30s；登录失败后 `sleep 0.2` 再试下一个配置；
+- **日志照抄**：`HH:MM:SS [LEVEL] msg` + 跨日期灰色日期行 + 等级配色（INFO 青 / STAT 绿 / WARN 黄 / ERRO·FATA 红 / DEBG 深灰），
+  文案逐字对齐：`脚本已启动` / `Wi‑Fi 扫描间隔: 30s`·`Wi‑Fi 扫描已禁用` / `电池消耗通知已关闭` / `进入未连接状态` /
+  `校园网已连接，尝试登录` / `配置18登录成功` / `bitsrun 超时 (10s)` / `所有配置均失败` / `扫描到校园网，尝试连接` /
+  `未检测到校园网` / `进入校园网状态` / `使用配置18成功续期N次，共M秒` / `第N次续期失败` / `bitsrun 续期超时 (10s)` /
+  `检测到宿舍Wi‑Fi (在线…s, 续期…次)` / `进入宿舍模式` / `宿舍Wi‑Fi在线: X (…s)` / `宿舍Wi‑Fi断开 (在线…s)` /
+  `Wi‑Fi扫描: 已执行` / `正在刷新dumpsys (高耗电)` / `检测到手动终止 (Ctrl+C)，脚本退出`；
+- `./bitsrun --config N` → 内置引擎；`配置N` = 网关 IP 倒数第二段（`10.6.18.2`→18、`10.6.21.2`→21，正好对应原脚本的 18/21）；
+- `termux-wifi-*` / `dumpsys` 探测 → 本机 `WifiManager`；`$ADB shell cmd wifi …` → Shizuku（见二）；
+- 宿舍网由「只用于跳过登录的 SSID 列表」升级为 **SSID + 口令**（对应原脚本 `ROOM_WIFI_SSIDS/ROOM_WIFI_PASSWORDS`）：
+  扫到/连上即切「宿舍模式」，必要时 `cmd wifi connect-network <ssid> wpa2 <pass>` 主动连；老配置自动迁移为无口令；
+- **保留既有修复**（对齐的是状态机/时序/日志，不回退修复）：认证 IP 取网关上报的 `client_ip`、VPN 三级降级绑卡、4 端点兜底、明文放行；
+- 新增 `DEBG` 级诊断行（引擎错误详情）—— 原脚本这类信息被 `>/dev/null 2>&1` 吞掉了，这里留着但不显眼。
+
+**二、WiFi 自动修复（可选，需 Shizuku）**
+- 依赖 `dev.rikka.shizuku:api/provider 13.1.5` + `ShizukuProvider` + 自研 AIDL UserService
+  （`ShellUserService` 在 uid 2000 shell 进程里跑 `sh -c`）；**不用**已废弃并转私有的 `Shizuku.newProcess`；
+- 能力：`cmd wifi set-wifi-enabled enabled`（= `svc wifi enable`，Android 10+ 普通 App 唯一的出路）、
+  `cmd wifi connect-network '<ssid>' open|wpa2 '<pass>'`（会写进已保存网络）、`cmd wifi start-scan`、
+  `cmd wifi list-scan-results`（比原脚本的 `WifiNetworkScoreCache` 解析可靠 —— **实测该段在本机 Android 12 的 `dumpsys wifi` 里已不存在**，
+  原脚本那条 awk 其实是永远查不到的）、`cmd wifi status`；
+- 无 Shizuku 时降级：连网退化为 `WifiNetworkSuggestion`（登记一次，系统自己在范围内连），开 WiFi 只能发通知提示；
+- 新增设置开关：**使用 Shizuku**、**开启保活时自动打开 WiFi**（只在启动那一刻做一次，不抢系统/WLAN+ 的开关）。
+
+**三、单次登录**
+- 主界面新增「单次登录」：不常驻、不续期，只跑一遍原脚本的 `disconnected`（必要时连 WiFi → 试 配置18/21 → 成败即止）；
+- 保活已在跑时，该按钮自动改为「立即检测」（避免两个状态机抢）。
+
+**四、其他**
+- 日志视图改为结构化 `LogLine` + Span 上色；收起时显示**最后 10 行**（终端手感，而不是永远停在开头几行），复制日志输出纯文本；
+- 通知折叠文案取最后 8 行；新增高优先级「电池消耗警告」通知（原脚本 `termux-notification` 的等价物）；
+- 主界面新增「WiFi 自动修复」一行：显示 Shizuku 状态（未运行 / 未授权 / 已授权）并可一键授权。
+
+- versionCode 21 / versionName **2.1.0**。**交付**：`dist/xjtu-stu-login-v2.1.0-release.apk`
+  （sha256 `8014ef7ae62f04617ae23b9a4967701d6eb77054093c6b015d81b7fd87261435`，release 签名）。
+- 已离线验证：`:engine:test` 绿；`:app:assembleDebug` / `:app:assembleRelease` 均过；release 包内 `ShizukuProvider`（authority `org.xjtulogin.app.shizuku`）
+  与 `ShellUserService` / `IShellUserService` 经 R8 后仍在（`-keep` 生效）。
+- 待真机验证：鸿蒙 4 上 Shizuku 的激活与授权（见 README 的华为说明）、`cmd wifi connect-network` 在 XJTU_STU 上的实连。

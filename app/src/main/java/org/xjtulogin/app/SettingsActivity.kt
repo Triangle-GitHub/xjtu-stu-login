@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package org.xjtulogin.app
 
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -13,6 +16,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.xjtulogin.app.databinding.AccountRowBinding
 import org.xjtulogin.app.databinding.ActivitySettingsBinding
 import org.xjtulogin.app.databinding.GatewayRowBinding
+import org.xjtulogin.app.databinding.RoomRowBinding
+import rikka.shizuku.Shizuku
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -22,6 +27,7 @@ class SettingsActivity : AppCompatActivity() {
     /** 动态行的绑定对象：保存时直接读，不再按 id 从视图树里找 */
     private val gatewayRows = mutableListOf<GatewayRowBinding>()
     private val accountRows = mutableListOf<AccountRowBinding>()
+    private val roomRows = mutableListOf<RoomRowBinding>()
     private var advancedOpen = false
 
     private val dirtyWatcher = object : TextWatcher {
@@ -32,14 +38,32 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private val shizukuPermissionListener =
+        Shizuku.OnRequestPermissionResultListener { _, grantResult ->
+            val ok = grantResult == PackageManager.PERMISSION_GRANTED
+            Toast.makeText(
+                this,
+                if (ok) R.string.shizuku_granted else R.string.shizuku_denied,
+                Toast.LENGTH_SHORT
+            ).show()
+            refreshShizuku()
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(b.root)
 
+        ShizukuShell.addPermissionListener(shizukuPermissionListener)
         setupHeaders()
         bindConfig()
         attachListeners()
+        refreshShizuku()
+    }
+
+    override fun onDestroy() {
+        ShizukuShell.removePermissionListener(shizukuPermissionListener)
+        super.onDestroy()
     }
 
     private fun setupHeaders() {
@@ -64,6 +88,10 @@ class SettingsActivity : AppCompatActivity() {
         b.headerNetwork.headerTitle.setText(R.string.card_network_title)
         b.headerNetwork.headerCaption.setText(R.string.card_network_caption)
 
+        b.headerWifi.headerIcon.setImageResource(R.drawable.ic_wifi)
+        b.headerWifi.headerTitle.setText(R.string.card_wifi_title)
+        b.headerWifi.headerCaption.setText(R.string.card_wifi_caption)
+
         b.headerAdvanced.headerIcon.setImageResource(R.drawable.ic_code)
         b.headerAdvanced.headerTitle.setText(R.string.card_advanced_title)
         b.headerAdvanced.headerCaption.setText(R.string.card_advanced_caption)
@@ -84,23 +112,33 @@ class SettingsActivity : AppCompatActivity() {
         val cfg = AppStore.load(this)
         cfg.gateways.forEach { addGatewayRow(it) }
         cfg.accounts.forEach { addAccountRow(it) }
+        cfg.rooms.forEach { addRoomRow(it) }
         if (cfg.gateways.isEmpty()) addGatewayRow(Gateway())
         if (cfg.accounts.isEmpty()) addAccountRow(Account(userType = "stu"))
 
         b.etPollInterval.setText(cfg.pollIntervalSec.toString())
         b.etTimeout.setText(cfg.timeoutMs.toString())
+        b.etRenewInterval.setText(cfg.renewIntervalSec.toString())
+        b.etLoginTimeout.setText(cfg.loginTimeoutSec.toString())
+        b.etScanInterval.setText(cfg.scanIntervalSec.toString())
         b.etTargetSsids.setText(cfg.targetSsids.joinToString(","))
-        b.etRoomSsids.setText(cfg.roomSsids.joinToString(","))
         b.etMetaOs.setText(cfg.metaOs)
         b.etMetaName.setText(cfg.metaName)
         b.swAutoStart.isChecked = cfg.autoStart
+        b.swWifiScan.isChecked = cfg.wifiScan
+        b.swBatteryWarning.isChecked = cfg.batteryWarning
+        b.swUseShizuku.isChecked = cfg.useShizuku
+        b.swAutoEnableWifi.isChecked = cfg.autoEnableWifi
 
         // 监视放在填充之后：避免初始化就标脏
         listOf(
-            b.etPollInterval, b.etTimeout, b.etTargetSsids,
-            b.etRoomSsids, b.etMetaOs, b.etMetaName
+            b.etPollInterval, b.etTimeout, b.etRenewInterval, b.etLoginTimeout,
+            b.etScanInterval, b.etTargetSsids, b.etMetaOs, b.etMetaName
         ).forEach { it.addTextChangedListener(dirtyWatcher) }
-        b.swAutoStart.setOnCheckedChangeListener { _, _ -> markDirty() }
+        listOf(
+            b.swAutoStart, b.swWifiScan, b.swBatteryWarning,
+            b.swUseShizuku, b.swAutoEnableWifi
+        ).forEach { it.setOnCheckedChangeListener { _, _ -> markDirty() } }
 
         b.swAdvanced.isChecked = cfg.showAdvanced
         b.swAdvanced.setOnCheckedChangeListener { _, checked ->
@@ -110,7 +148,7 @@ class SettingsActivity : AppCompatActivity() {
         applyAdvanced(cfg.showAdvanced)
     }
 
-    /** 简化模式：默认只露账号 + 开机自启；网关/SSID/轮询参数收起 */
+    /** 简化模式：默认只露账号 + WiFi 修复 + 开机自启；网关/SSID/时序参数收起 */
     private fun applyAdvanced(show: Boolean) {
         val v = if (show) View.VISIBLE else View.GONE
         b.cardGateway.visibility = v
@@ -128,7 +166,59 @@ class SettingsActivity : AppCompatActivity() {
             addAccountRow(Account(userType = "stu"))
             markDirty()
         }
+        b.btnAddRoom.setOnClickListener {
+            addRoomRow(RoomWifi())
+            markDirty()
+        }
+        b.btnShizuku.setOnClickListener { onShizukuClicked() }
+        b.swUseShizuku.setOnCheckedChangeListener { _, checked ->
+            markDirty()
+            if (checked) requestShizukuIfNeeded()
+            refreshShizuku()
+        }
         b.fabSave.setOnClickListener { save() }
+    }
+
+    // ------------------------------------------------------------- Shizuku
+
+    /** 开关打开时顺手要一次授权（用户刚打开开关 = 意图明确） */
+    private fun requestShizukuIfNeeded() {
+        if (!ShizukuShell.binderAlive()) {
+            Toast.makeText(this, R.string.shizuku_not_running, Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!ShizukuShell.hasPermission()) ShizukuShell.requestPermission()
+    }
+
+    private fun onShizukuClicked() {
+        when {
+            !ShizukuShell.binderAlive() -> {
+                val launched = try {
+                    startActivity(packageManager.getLaunchIntentForPackage(SHIZUKU_PKG))
+                    true
+                } catch (_: Throwable) {
+                    false
+                }
+                if (!launched) {
+                    Toast.makeText(this, R.string.shizuku_not_running, Toast.LENGTH_LONG).show()
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SHIZUKU_URL)))
+                    } catch (_: Throwable) {
+                    }
+                }
+            }
+            !ShizukuShell.hasPermission() -> ShizukuShell.requestPermission()
+            else -> Toast.makeText(
+                this,
+                getString(R.string.shizuku_button, ShizukuShell.describe()),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        refreshShizuku()
+    }
+
+    private fun refreshShizuku() {
+        b.btnShizuku.text = getString(R.string.shizuku_button, ShizukuShell.describe())
     }
 
     // ------------------------------------------------------------- 动态行
@@ -169,6 +259,21 @@ class SettingsActivity : AppCompatActivity() {
         b.accountsContainer.addView(row.root)
     }
 
+    private fun addRoomRow(room: RoomWifi) {
+        val row = RoomRowBinding.inflate(layoutInflater, b.roomsContainer, false)
+        row.roomSsid.setText(room.ssid)
+        row.roomPass.setText(room.password)
+        row.btnDelRoom.setOnClickListener {
+            b.roomsContainer.removeView(row.root)
+            roomRows.remove(row)
+            markDirty()
+        }
+        row.roomSsid.addTextChangedListener(dirtyWatcher)
+        row.roomPass.addTextChangedListener(dirtyWatcher)
+        roomRows.add(row)
+        b.roomsContainer.addView(row.root)
+    }
+
     // ------------------------------------------------------------- 保存
 
     private fun save() {
@@ -193,25 +298,41 @@ class SettingsActivity : AppCompatActivity() {
                 enabled = row.accEnabled.isChecked,
             )
         }
+        val rooms = roomRows.mapNotNull { row ->
+            val ssid = row.roomSsid.text.toString().trim()
+            if (ssid.isEmpty()) return@mapNotNull null
+            RoomWifi(ssid = ssid, password = row.roomPass.text.toString())
+        }
 
         val cfg = AppStore.load(this).copy(
             gateways = gws,
             accounts = accs,
+            rooms = rooms,
             pollIntervalSec = b.etPollInterval.text.toString().toIntOrNull()?.coerceIn(5, 86400) ?: 60,
             timeoutMs = b.etTimeout.text.toString().toIntOrNull()?.coerceIn(1000, 30000) ?: 5000,
+            renewIntervalSec = b.etRenewInterval.text.toString().toIntOrNull()?.coerceIn(1, 86400) ?: 5,
+            loginTimeoutSec = b.etLoginTimeout.text.toString().toIntOrNull()?.coerceIn(2, 600) ?: 10,
+            scanIntervalSec = b.etScanInterval.text.toString().toIntOrNull()?.coerceIn(5, 3600) ?: 30,
             targetSsids = b.etTargetSsids.text.toString().split(",").map { it.trim() }.filter { it.isNotEmpty() },
-            roomSsids = b.etRoomSsids.text.toString().split(",").map { it.trim() }.filter { it.isNotEmpty() },
             metaOs = b.etMetaOs.text.toString().trim().ifEmpty { "Windows 2000" },
             metaName = b.etMetaName.text.toString().trim().ifEmpty { "losedows" },
             autoStart = b.swAutoStart.isChecked,
             showAdvanced = b.swAdvanced.isChecked,
+            wifiScan = b.swWifiScan.isChecked,
+            batteryWarning = b.swBatteryWarning.isChecked,
+            useShizuku = b.swUseShizuku.isChecked,
+            autoEnableWifi = b.swAutoEnableWifi.isChecked,
         )
         AppStore.save(this, cfg)
 
         dirty = false
         updateFab()
         hideKeyboard()
-        Toast.makeText(this, getString(R.string.saved, gws.size, accs.size), Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            this,
+            getString(R.string.saved, gws.size, accs.size) + " · " + getString(R.string.saved_rooms, rooms.size),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     // ------------------------------------------------------------- 脏标记 / 返回
@@ -243,5 +364,10 @@ class SettingsActivity : AppCompatActivity() {
     private fun hideKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager ?: return
         imm.hideSoftInputFromWindow(b.root.windowToken, 0)
+    }
+
+    private companion object {
+        const val SHIZUKU_PKG = "moe.shizuku.privileged.api"
+        const val SHIZUKU_URL = "https://shizuku.rikka.app/download/"
     }
 }

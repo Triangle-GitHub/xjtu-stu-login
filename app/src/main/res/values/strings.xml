@@ -103,4 +103,46 @@
     <string name="notif_channel_desc">常驻通知显示当前登录/保活状态</string>
     <string name="notif_action_check">立即检测</string>
     <string name="notif_action_stop">停止</string>
+    <!-- 单次登录（复刻原脚本「未连接」那一遍） -->
+    <string name="btn_one_shot">单次登录</string>
+    <string name="toast_one_shot">正在执行单次登录…</string>
+    <string name="toast_one_shot_while_running">保活正在运行，已改为立即检测</string>
+
+    <!-- WiFi 自动修复 / Shizuku -->
+    <string name="nav_wifi_fix_title">WiFi 自动修复</string>
+    <string name="wifi_fix_off">未启用（点此去设置打开）</string>
+    <string name="wifi_fix_no_binder">Shizuku 未运行（点此查看）</string>
+    <string name="wifi_fix_no_permission">Shizuku 未授权（点此授权）</string>
+    <string name="wifi_fix_ready">%1$s · 扫到即连 / 可自动开 WiFi</string>
+    <string name="shizuku_granted">Shizuku 已授权</string>
+    <string name="shizuku_denied">Shizuku 授权被拒绝</string>
+    <string name="shizuku_not_running">Shizuku 没在运行：先装/启动 Shizuku 再授权</string>
+    <string name="shizuku_enable_in_settings">请在设置里打开「使用 Shizuku」</string>
+    <string name="shizuku_button">Shizuku：%1$s</string>
+    <string name="shizuku_check">检查 / 申请 Shizuku 授权</string>
+    <string name="card_wifi_title">WiFi 自动修复</string>
+    <string name="card_wifi_caption">原脚本靠 adb，这里靠 Shizuku（可选）</string>
+    <string name="use_shizuku">使用 Shizuku（ADB shell 身份）</string>
+    <string name="use_shizuku_desc">开启后等同于原脚本里的 adb shell：WiFi 关着能自动打开、扫到 XJTU_STU 直接连、主动扫描可用。不开启则退化为「网络建议」（系统自己连）+ 通知提示。</string>
+    <string name="auto_enable_wifi">开启保活时自动打开 WiFi</string>
+    <string name="auto_enable_wifi_desc">只在点「启动保活」那一刻做一次，之后不抢系统/WLAN+ 的开关。</string>
+
+    <!-- 时序（对齐原脚本） -->
+    <string name="renew_interval">续期间隔（秒，原脚本 5）</string>
+    <string name="login_timeout">单次登录预算（秒，原脚本 10）</string>
+    <string name="scan_interval">主动扫描最小间隔（秒，原脚本 30）</string>
+    <string name="wifi_scan">主动触发扫描</string>
+    <string name="wifi_scan_desc">原脚本默认关闭（ENABLE_WIFI_SCAN=0）：开着更及时，也更费电（需要 Shizuku）。</string>
+    <string name="battery_warning">电池消耗警告通知</string>
+    <string name="battery_warning_desc">原脚本在连续刷新 dumpsys 时弹高优先级通知，这里保留同样行为。</string>
+
+    <!-- 宿舍网（SSID + 口令） -->
+    <string name="room_title">宿舍网（可选）</string>
+    <string name="room_caption">填了就在扫到/连上时切进「宿舍模式」，不占用校园网账号；口令留空 = 开放网络。</string>
+    <string name="room_ssid_hint">宿舍网 SSID</string>
+    <string name="room_pass_hint">宿舍网口令（留空 = 开放）</string>
+    <string name="add_room">添加宿舍网</string>
+    <string name="delete_room">删除宿舍网</string>
+    <string name="saved_rooms">%1$d 宿舍网</string>
+
 </resources>

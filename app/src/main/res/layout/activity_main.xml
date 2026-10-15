@@ -252,6 +252,16 @@
                 android:text="@string/btn_refresh"
                 app:icon="@drawable/ic_refresh" />
 
+            <!-- 单次登录：只跑一遍「未连接」流程（连 WiFi → 试 18/21 → 成败即止），不常驻不续期 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_one_shot"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="@dimen/space_xs"
+                android:text="@string/btn_one_shot"
+                app:icon="@drawable/ic_play" />
+
             <!-- 设置入口 -->
             <TextView
                 style="@style/Widget.Xjtu.SectionTitle"
@@ -279,6 +289,18 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content" />
 
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="52dp"
+                        android:background="?attr/colorOutlineVariant" />
+
+                    <include
+                        android:id="@+id/item_wifi"
+                        layout="@layout/item_nav"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"

@@ -48,4 +48,14 @@
     <color name="md_inverse_on_surface">#F1F0F4</color>
     <color name="md_inverse_primary">#A5C8FF</color>
     <color name="md_surface_tint">#1F5E9E</color>
+
+    <!-- 运行日志配色：对应原 Termux 脚本的 ANSI 等级色（INFO 青 / STAT 绿 / WARN 黄 / ERRO 红 / DEBG 灰）。
+         终端底色与 App 主题背景差很多，所以亮/暗各一套保证可读（见 values-night/colors.xml）。 -->
+    <color name="log_time">#5F6368</color>
+    <color name="log_bracket">#44474F</color>
+    <color name="log_info">#00697A</color>
+    <color name="log_stat">#2E7D32</color>
+    <color name="log_warn">#8A5A00</color>
+    <color name="log_error">#BA1A1A</color>
+    <color name="log_debug">#6F7276</color>
 </resources>

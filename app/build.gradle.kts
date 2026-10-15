@@ -19,8 +19,8 @@ android {
         applicationId = "org.xjtulogin.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 21
+        versionName = "2.1.0"
     }
 
     signingConfigs {
@@ -52,6 +52,8 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        // Shizuku UserService 的 AIDL（IShellUserService.aidl）
+        aidl = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -69,4 +71,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // Shizuku：拿 ADB shell 身份跑 `cmd wifi …`（等价原脚本的 $ADB shell）
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

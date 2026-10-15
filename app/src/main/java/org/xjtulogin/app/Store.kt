@@ -23,13 +23,36 @@ data class Account(
     val enabled: Boolean = true,
 )
 
+/** 宿舍网（原脚本 `ROOM_WIFI_SSIDS` / `ROOM_WIFI_PASSWORDS`）：命中即切换到「宿舍模式」，不占用校园网账号 */
+data class RoomWifi(
+    val ssid: String = "",
+    val password: String = "",
+)
+
 data class AppConfig(
     val gateways: List<Gateway> = listOf(Gateway("10.6.18.2"), Gateway("10.6.21.2")),
     val accounts: List<Account> = emptyList(),
+
+    // ---- 原脚本时序（keep_srun_v2.6.sh）----
+    /** 进入「校园网状态」后的续期间隔 = 原脚本 `sleep 5` */
+    val renewIntervalSec: Int = 5,
+    /** 单次登录/续期的整体预算 = 原脚本 `run_with_timeout 10 ./bitsrun` */
+    val loginTimeoutSec: Int = 10,
+    /** 「未连接状态」里 t 的初值 = 原脚本 `t=5` */
+    val baseLoopSec: Int = 5,
+    /** 原脚本 `ENABLE_WIFI_SCAN`（默认 0） */
+    val wifiScan: Boolean = false,
+    /** 原脚本 `SCAN_INTERVAL` */
+    val scanIntervalSec: Int = 30,
+    /** 原脚本 `ENABLE_BATTERY_WARNING` */
+    val batteryWarning: Boolean = true,
+
+    // ---- 本 App 参数（原脚本没有的）----
     val pollIntervalSec: Int = 60,
     val timeoutMs: Int = 5000,
     val targetSsids: List<String> = listOf("XJTU_STU"),
-    val roomSsids: List<String> = emptyList(),
+    /** 宿舍网列表（SSID + 口令）；口令留空 = 开放网络 */
+    val rooms: List<RoomWifi> = emptyList(),
     val autoStart: Boolean = true,
     val serviceEnabled: Boolean = false,
     /** 首启三步引导被手动关掉 */
@@ -40,6 +63,15 @@ data class AppConfig(
     val lastGoodGateway: String = "",
     val metaOs: String = "Windows 2000",
     val metaName: String = "losedows",
+
+    // ---- WiFi 自修复 / Shizuku ----
+    /** 用 Shizuku 取得 ADB shell 身份来跑 `cmd wifi …`（原脚本靠 adb 做的那几条） */
+    val useShizuku: Boolean = false,
+    /** 开启保活时若 WiFi 关着，自动打开一次 */
+    val autoEnableWifi: Boolean = true,
+
+    /** 老版本字段（只读，用于迁移到 [rooms]） */
+    val legacyRoomSsids: List<String> = emptyList(),
 )
 
 /**
@@ -112,12 +144,29 @@ object AppStore {
                     )
                 }
             }
+            val legacyRooms = o.optString("roomSsids", "")
+                .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            val rooms = (o.optJSONArray("rooms") ?: JSONArray()).let { arr ->
+                (0 until arr.length()).map { i ->
+                    val r = arr.getJSONObject(i)
+                    RoomWifi(r.optString("ssid"), r.optString("password"))
+                }
+            }.ifEmpty {
+                // 老版本只有 SSID 列表（语义=跳过登录，无口令）⇒ 迁成「无口令宿舍网」
+                legacyRooms.map { RoomWifi(it, "") }
+            }
             AppConfig(
                 gateways = gws, accounts = accs,
+                renewIntervalSec = o.optInt("renewIntervalSec", 5),
+                loginTimeoutSec = o.optInt("loginTimeoutSec", 10),
+                baseLoopSec = o.optInt("baseLoopSec", 5),
+                wifiScan = o.optBoolean("wifiScan", false),
+                scanIntervalSec = o.optInt("scanIntervalSec", 30),
+                batteryWarning = o.optBoolean("batteryWarning", true),
                 pollIntervalSec = o.optInt("pollIntervalSec", 60),
                 timeoutMs = o.optInt("timeoutMs", 5000),
                 targetSsids = o.optString("targetSsids", "XJTU_STU").split(",").map { it.trim() }.filter { it.isNotEmpty() },
-                roomSsids = o.optString("roomSsids", "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                rooms = rooms,
                 autoStart = o.optBoolean("autoStart", true),
                 serviceEnabled = o.optBoolean("serviceEnabled", false),
                 onboardingDismissed = o.optBoolean("onboardingDismissed", false),
@@ -125,6 +174,9 @@ object AppStore {
                 lastGoodGateway = o.optString("lastGoodGateway", ""),
                 metaOs = o.optString("metaOs", "Windows 2000"),
                 metaName = o.optString("metaName", "losedows"),
+                useShizuku = o.optBoolean("useShizuku", false),
+                autoEnableWifi = o.optBoolean("autoEnableWifi", true),
+                legacyRoomSsids = legacyRooms,
             )
         } catch (_: Throwable) {
             AppConfig()
@@ -148,14 +200,24 @@ object AppStore {
                     .put("userType", it.userType).put("enabled", it.enabled)
             )
         }
-        o.put("gateways", gws).put("accounts", accs)
+        val rooms = JSONArray()
+        cfg.rooms.forEach {
+            rooms.put(JSONObject().put("ssid", it.ssid).put("password", it.password))
+        }
+        o.put("gateways", gws).put("accounts", accs).put("rooms", rooms)
+            .put("renewIntervalSec", cfg.renewIntervalSec)
+            .put("loginTimeoutSec", cfg.loginTimeoutSec)
+            .put("baseLoopSec", cfg.baseLoopSec)
+            .put("wifiScan", cfg.wifiScan)
+            .put("scanIntervalSec", cfg.scanIntervalSec)
+            .put("batteryWarning", cfg.batteryWarning)
             .put("pollIntervalSec", cfg.pollIntervalSec).put("timeoutMs", cfg.timeoutMs)
             .put("targetSsids", cfg.targetSsids.joinToString(","))
-            .put("roomSsids", cfg.roomSsids.joinToString(","))
             .put("autoStart", cfg.autoStart).put("serviceEnabled", cfg.serviceEnabled)
             .put("onboardingDismissed", cfg.onboardingDismissed).put("showAdvanced", cfg.showAdvanced)
             .put("lastGoodGateway", cfg.lastGoodGateway)
             .put("metaOs", cfg.metaOs).put("metaName", cfg.metaName)
+            .put("useShizuku", cfg.useShizuku).put("autoEnableWifi", cfg.autoEnableWifi)
         try {
             prefs(context).edit().putString(KEY_JSON, o.toString()).apply()
         } catch (_: Throwable) {

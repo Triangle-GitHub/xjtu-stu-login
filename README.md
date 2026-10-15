@@ -19,12 +19,19 @@
 - **开着 VPN 也能用**：检测到 VPN（覆盖网）时，把登录请求的 socket **绑定到 WiFi 网卡**直出、不穿隧道；
   机型不允许绑卡时自动降级（进程绑 WiFi → 默认路由），并把实际策略显示在状态里
 - **认证 IP 取网关上报值**（见「协议要点」）—— 同类实现最常踩的坑
+- **保活逻辑逐条对齐原 Termux 脚本**（`keep_srun_v2.6.sh`）：三态状态机（未连接 / 已连接 / 宿舍）、
+  同样的时序（进入已连接后每 5s 续期、单次登录预算 10s、未连接态 t 递减）、逐字日志与等级配色
+  （`HH:MM:SS [LEVEL] msg` + 日期分隔行，INFO 青 / STAT 绿 / WARN 黄 / ERRO 红）
+- **WiFi 自动修复（可选 · Shizuku）**：开启保活时若 WiFi 关着就自动打开；扫到 `XJTU_STU` 没连上就
+  `cmd wifi connect-network` 直接连 —— 即原脚本里的 `adb shell cmd wifi …`，只是把 adb 通道换成 Shizuku；
+  不授权时退化为「网络建议」（登记一次，系统自己在范围内连）+ 通知提示
+- **单次登录**：不常驻，只跑一遍「未连接」流程（必要时连 WiFi → 依次试 配置 18/21 → 成败即止）
 - **隐私优先**：凭据仅本机 Keystore 加密存储；无遥测、无上报、无第三方 SDK；日志与通知里学号自动脱敏（形如 `前4位****后2位@stu`）
 - **Material 3 界面**（亮/暗）、首启三步引导、简化模式（网关/SSID/轮询等高级项默认收起）
 
 ## 下载与安装
 
-- 最新版本：[`dist/xjtu-stu-login-v2.0.0-release.apk`](dist/xjtu-stu-login-v2.0.0-release.apk)（约 2.3 MB，release 签名）
+- 最新版本：[`dist/xjtu-stu-login-v2.1.0-release.apk`](dist/xjtu-stu-login-v2.1.0-release.apk)（约 2.3 MB，release 签名）
 - 要求 Android 8.0+（minSdk 26）；安装时需允许「安装未知来源应用」
 - 升级：同一签名可直接覆盖安装，账号配置保留
 
@@ -56,8 +63,20 @@ Android 10+ 把读取 SSID 归入定位权限。拒绝授权时 App 会按「未
 **Q：会不会被系统杀掉？**
 前台服务 + 常驻通知 + 电池优化白名单 + 开机自启四件套。华为/小米等 ROM 还需在系统「应用启动管理」里允许自启动与后台运行。
 
+**Q：WiFi 关着能自动打开吗？扫到 `XJTU_STU` 会自动连吗？**
+**开 WiFi 必须借助 Shizuku。** Android 10 起普通 App 已彻底不能开关 WiFi（`setWifiEnabled()` 恒返回 `false`），
+只有系统应用、Device Owner，或者拿到签名权限 `NETWORK_SETTINGS` 的调用者（= **ADB shell**）可以 —— 
+而 Shizuku 提供的正是这个 shell 身份（你原脚本里的 `adb shell` 是同一件事，只是 Shizuku 不需要开 5555、不需要电脑、不需要 Termux）。
+用法：装 [Shizuku](https://shizuku.rikka.app/download/) → 启动它 → 在本 App「设置 → WiFi 自动修复」打开「使用 Shizuku」并授权。
+不开启也能自动连（「网络建议」由系统代理），但**开不了 WiFi**，只会发通知提示你点一下。
+
+⚠️ **华为/鸿蒙用户注意**：华为开发者选项里**没有「无线调试」**（华为官方支持页确认，覆盖 HarmonyOS 2.0–4.3），
+Shizuku 无 root 时就靠它配对。可用一次 USB 连电脑执行 `adb shell settings put global adb_wifi_enabled 1` 放出隐藏开关，
+或者每次重启后用 USB 跑一次 `start.sh`；**鸿蒙 6 换用 HDC 之后 Shizuku 不可用**（社区已有 issue）。
+
 **Q：宿舍网怎么办？**
-宿舍网 SSID 可留空（留空 = 不跳过任何网络）；若填了，检测到该 SSID 就跳过登录，不占用校园网账号。
+宿舍网现在是 **SSID + 口令成对**填（设置页可加多条，口令留空 = 开放网络）：扫到或连上就切进「宿舍模式」，
+期间不占用校园网账号、不续期；宿舍网掉线则自动回到校园网流程。不想它主动切走就留空不填。
 
 ## 协议要点（给实现者）
 
@@ -116,6 +135,7 @@ dist/     # 预编译 release APK
 
 - [ ] **运营商后缀改为下拉选择**（`stu` 预选、可留空）—— 目前仍为手输，输错会得到网关 `login_error`。
 - [ ] **QS 磁贴 / 桌面小组件**：一键「立即检测 / 开关保活」，从宿舍切回校园网后不必开 App。
+- [ ] **Shizuku 免电脑激活**：把「adb tcpip 5555 自激活」写成引导（目前靠 USB 或手机自己的 Termux）。
 
 ## 免责声明
 
