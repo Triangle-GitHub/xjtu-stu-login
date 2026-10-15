@@ -54,6 +54,19 @@ object StatusStore {
 
     @Volatile private var cache: ServiceStatus? = null
 
+    /**
+     * 落盘去抖：状态机每 5s 就会 append 一行，如果每行都把整个 prefs 文件重写一遍
+     * （400 行 ≈ 15KB，一小时约 10MB 写入）对闪存和电量都不划算。
+     * 内存里的 [ServiceStatus] 始终是最新的（界面照旧实时），只是**落盘**最多 2s 一次；
+     * 心跳同理 —— 即使落后几秒，MainActivity 的存活判定（≥150s）也足够宽松。
+     */
+    private const val PERSIST_MIN_INTERVAL_MS = 2_000L
+
+    /** 只落盘最近这么多行（进程被杀后回来看得到尾巴即可；会话内界面仍可看全量） */
+    private const val PERSIST_LINES = 60
+
+    @Volatile private var lastPersistAt = 0L
+
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
@@ -120,13 +133,13 @@ object StatusStore {
         val now = System.currentTimeMillis()
         val cur = get(ctx)
         val next = (cur.lines + line).takeLast(LogKit.MAX_LINES)
-        persist(ctx, cur.copy(lines = next, updatedAt = now, heartbeatAt = now))
+        persist(ctx, cur.copy(lines = next, updatedAt = now, heartbeatAt = now), force = false)
     }
 
     /** 仅刷新心跳：状态机在长等待里也要让界面知道「服务还活着」 */
     fun beat(ctx: Context) {
         val cur = get(ctx)
-        persist(ctx, cur.copy(heartbeatAt = System.currentTimeMillis()))
+        persist(ctx, cur.copy(heartbeatAt = System.currentTimeMillis()), force = false)
     }
 
     /** 清空日志（单次登录 / 重新启动保活时想让日志干净些） */
@@ -143,13 +156,16 @@ object StatusStore {
         return System.currentTimeMillis() - s.heartbeatAt < staleAfter
     }
 
-    private fun persist(ctx: Context, s: ServiceStatus) {
+    private fun persist(ctx: Context, s: ServiceStatus, force: Boolean = true) {
         cache = s
+        val now = System.currentTimeMillis()
+        if (!force && now - lastPersistAt < PERSIST_MIN_INTERVAL_MS) return
+        lastPersistAt = now
         try {
             prefs(ctx).edit()
                 .putString(K_SUMMARY, s.summary)
                 .putString(K_DETAIL, s.detail)
-                .putString(K_LOG_LINES, LogKit.encode(s.lines))
+                .putString(K_LOG_LINES, LogKit.encode(s.lines.takeLast(PERSIST_LINES)))
                 .putString(K_LEVEL, s.level.name)
                 .putLong(K_UPDATED, s.updatedAt)
                 .putLong(K_HEARTBEAT, s.heartbeatAt)

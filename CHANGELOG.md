@@ -216,11 +216,13 @@
 
 **四、其他**
 - 日志视图改为结构化 `LogLine` + Span 上色；收起时显示**最后 10 行**（终端手感，而不是永远停在开头几行），复制日志输出纯文本；
+- 日志/状态**落盘去抖**：状态机每 5s 一行，原来每行都重写整个 prefs 文件（400 行 ≈ 15KB ⇒ 一小时约 10MB 写入），
+  现改为「内存实时 + 落盘至多 2s 一次、只存最后 60 行」——界面体感不变，闪存与电量开销降一个量级。
 - 通知折叠文案取最后 8 行；新增高优先级「电池消耗警告」通知（原脚本 `termux-notification` 的等价物）；
 - 主界面新增「WiFi 自动修复」一行：显示 Shizuku 状态（未运行 / 未授权 / 已授权）并可一键授权。
 
 - versionCode 21 / versionName **2.1.0**。**交付**：`dist/xjtu-stu-login-v2.1.0-release.apk`
-  （sha256 `8014ef7ae62f04617ae23b9a4967701d6eb77054093c6b015d81b7fd87261435`，release 签名）。
+  （sha256 `c8f54b6e766e2b59d7fd224a185f9319a7b5fecaa650e901626ecc9b6cfc48e0`，release 签名）。
 - 已离线验证：`:engine:test` 绿；`:app:assembleDebug` / `:app:assembleRelease` 均过；release 包内 `ShizukuProvider`（authority `org.xjtulogin.app.shizuku`）
   与 `ShellUserService` / `IShellUserService` 经 R8 后仍在（`-keep` 生效）。
 - 待真机验证：鸿蒙 4 上 Shizuku 的激活与授权（见 README 的华为说明）、`cmd wifi connect-network` 在 XJTU_STU 上的实连。
