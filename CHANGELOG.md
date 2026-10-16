@@ -226,3 +226,7 @@
 - 已离线验证：`:engine:test` 绿；`:app:assembleDebug` / `:app:assembleRelease` 均过；release 包内 `ShizukuProvider`（authority `org.xjtulogin.app.shizuku`）
   与 `ShellUserService` / `IShellUserService` 经 R8 后仍在（`-keep` 生效）。
 - 待真机验证：鸿蒙 4 上 Shizuku 的激活与授权（见 README 的华为说明）、`cmd wifi connect-network` 在 XJTU_STU 上的实连。
+- **GitHub Release**：已发 `v2.1.0`（**pre-release**，标题即上条汇总），附 `xjtu-stu-login-v2.1.0-release.apk` 资产；
+  真机跑通实网流程后 `gh release edit v2.1.0 --prerelease=false` 即可转正。README 顶部补 Release / Downloads 徽章，
+  「下载与安装」改为指向 Release（同时保留 `dist/` 路径与 sha256）。
+- 装机：已 `adb install -r` 到真机（ALN-AL00 / Android 12，versionCode 20 → 21，**未启动**）。

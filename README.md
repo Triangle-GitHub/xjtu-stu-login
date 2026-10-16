@@ -4,6 +4,8 @@
 协议引擎自研（纯 Kotlin、零 Android 依赖、可离线单测），**不依赖任何第三方二进制**。
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Triangle-GitHub/xjtu-stu-login?include_prereleases&label=release)](https://github.com/Triangle-GitHub/xjtu-stu-login/releases)
+[![Downloads](https://img.shields.io/github/downloads/Triangle-GitHub/xjtu-stu-login/total)](https://github.com/Triangle-GitHub/xjtu-stu-login/releases)
 
 ## 它解决什么
 
@@ -31,7 +33,8 @@
 
 ## 下载与安装
 
-- 最新版本：[`dist/xjtu-stu-login-v2.1.0-release.apk`](dist/xjtu-stu-login-v2.1.0-release.apk)（约 2.3 MB，release 签名）
+- 最新版本：**[GitHub Release v2.1.0](https://github.com/Triangle-GitHub/xjtu-stu-login/releases/tag/v2.1.0)**（当前为 pre-release，待真机验证）
+  或本仓库 [`dist/xjtu-stu-login-v2.1.0-release.apk`](dist/xjtu-stu-login-v2.1.0-release.apk)（约 2.3 MB，release 签名；sha256 `c8f54b6e766e2b59d7fd224a185f9319a7b5fecaa650e901626ecc9b6cfc48e0`）
 - 要求 Android 8.0+（minSdk 26）；安装时需允许「安装未知来源应用」
 - 升级：同一签名可直接覆盖安装，账号配置保留
 
